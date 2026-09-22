@@ -1,0 +1,22 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Tricky Grok Test | Shared Grok Conversation</title></head>
+<body>
+<div class="flex flex-col items-center" style="height:600px;overflow-y:auto">
+  <div class="relative group flex flex-col justify-center w-full items-end">
+    <div class="message-bubble"><div class="response-content-markdown"><p>User asks one</p></div></div>
+  </div>
+  <!-- AI 行带响应式 md:items-end，不能被认成用户 -->
+  <div class="relative group flex flex-col justify-center w-full items-start md:items-end">
+    <div class="message-bubble"><div class="response-content-markdown">
+      <p>Thought for 12s</p>
+      <p>Searched the literature carefully, and the consensus across the reviewed studies is that the answer depends on context.</p>
+      <p>Grok answer one.</p></div></div>
+  </div>
+  <!-- 用户气泡内部嵌了 items-start 容器，不能被认成 AI -->
+  <div class="relative group flex flex-col justify-center w-full items-end">
+    <div class="message-bubble"><div class="flex items-start"><div class="response-content-markdown"><p>User asks two</p></div></div></div>
+  </div>
+  <div class="relative group flex flex-col justify-center w-full items-start">
+    <div class="message-bubble"><div class="response-content-markdown"><p>Searched 8 web pages</p><p>Grok answer two.</p></div></div>
+  </div>
+</div>
+</body></html>

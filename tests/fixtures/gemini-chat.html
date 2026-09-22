@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Gemini</title></head>
+<body>
+<div class="conversation selected"><div class="conversation-title">公式对话</div></div>
+<div id="chat" style="height:600px;overflow-y:auto">
+  <user-query><div class="query-text"><p>写出欧拉公式</p></div></user-query>
+  <model-response><response-container>
+    <div class="response-container-header"><span class="bot-name">Gemini</span></div>
+    <model-thoughts>显示思路 thinking text</model-thoughts>
+    <message-content><div class="markdown">
+      <p>欧拉公式是 <span class="math-inline" data-math="e^{i\pi}+1=0">e^iπ+1=0</span>。</p>
+      <div class="math-block" data-math="e^{ix}=\cos x+i\sin x"></div>
+    </div></message-content>
+    <message-actions><button>复制</button></message-actions>
+  </response-container></model-response>
+  <user-query><div class="query-text"><p>谢谢</p></div></user-query>
+  <model-response><response-container><message-content><div class="markdown"><p>不客气。</p></div></message-content></response-container></model-response>
+</div>
+</body></html>

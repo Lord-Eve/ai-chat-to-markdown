@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Gemini</title></head>
+<body>
+<!-- 按真实 gemini.google.com/share/* 页面的结构模拟：没有 <model-response>，回复直接在 <response-container> 里 -->
+<share-landing-page><share-viewer>
+  <div class="share-title-section"><h1>分享页测试标题</h1><span class="publish-time">2026年9月22日</span></div>
+  <div class="chat-history" style="height:600px;overflow-y:auto">
+    <share-turn-viewer>
+      <user-query><user-query-content><div class="user-query-container"><div class="query-content"><div class="query-text">第一问</div></div></div></user-query-content></user-query>
+      <response-container><div class="response-container-header"><div class="bot-name"><span class="bot-name-text">Gemini</span></div></div>
+        <div class="presented-response-container"><div class="response-container-content"><structured-content-container>
+          <message-content><div class="markdown markdown-main-panel"><p>第一答</p></div></message-content>
+        </structured-content-container></div></div>
+        <div class="response-container-footer"><button>分享</button></div>
+      </response-container>
+    </share-turn-viewer>
+    <share-turn-viewer>
+      <user-query><user-query-content><div class="query-text">第二问</div></user-query-content></user-query>
+      <response-container><div class="response-container-header"><div class="bot-name"><span class="bot-name-text">Gemini</span></div></div>
+        <message-content><div class="markdown"><p>第二答</p><ol><li>甲</li><li>乙</li></ol></div></message-content>
+      </response-container>
+    </share-turn-viewer>
+  </div>
+</share-viewer></share-landing-page>
+</body></html>

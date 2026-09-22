@@ -1,0 +1,34 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Virtual List - ChatGPT</title>
+<style>body{margin:0}#root{height:600px;overflow-y:auto;position:relative}
+#spacer{position:relative}article{position:absolute;left:0;right:0;height:280px;box-sizing:border-box;border-bottom:1px solid #ccc}</style></head>
+<body>
+<div id="root" data-scroll-root><div id="spacer"></div></div>
+<script>
+// 模拟 ChatGPT 虚拟列表：共 N 条消息，只挂载视口上下各一屏以内的
+const N = 60, H = 280, root = document.getElementById('root'), spacer = document.getElementById('spacer');
+spacer.style.height = (N * H) + 'px';
+const mounted = new Map();
+function make(i) {
+  const a = document.createElement('article');
+  a.dataset.testid = 'conversation-turn-' + (i + 1);
+  a.style.top = (i * H) + 'px';
+  const role = i % 2 === 0 ? 'user' : 'assistant';
+  const turn = Math.floor(i / 2) + 1;
+  const inner = role === 'user'
+    ? '<div class="whitespace-pre-wrap">Question ' + turn + '</div>'
+    : '<div class="markdown"><p>Answer ' + turn + '</p></div>';
+  a.innerHTML = '<div data-message-author-role="' + role + '" data-message-id="m' + i + '">' + inner + '</div>';
+  return a;
+}
+function render() {
+  const lo = Math.max(0, Math.floor((root.scrollTop - root.clientHeight) / H));
+  const hi = Math.min(N - 1, Math.ceil((root.scrollTop + 2 * root.clientHeight) / H));
+  for (const [i, el] of mounted) if (i < lo || i > hi) { el.remove(); mounted.delete(i); }
+  for (let i = lo; i <= hi; i++) if (!mounted.has(i)) { const el = make(i); spacer.appendChild(el); mounted.set(i, el); }
+  window.__maxMounted = Math.max(window.__maxMounted || 0, mounted.size);
+}
+root.addEventListener('scroll', render);
+root.scrollTop = N * H; // 像真实页面一样，打开时停在底部
+render();
+</script>
+</body></html>
