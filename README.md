@@ -11,8 +11,8 @@
 然后任选一个来源安装：
 
 - **GitHub**：[点这里安装](https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js)
-- **Greasy Fork**：（上架后补链接）
-- **脚本猫**：（上架后补链接）
+- **Greasy Fork**：[greasyfork.org/scripts/597047](https://greasyfork.org/scripts/597047)
+- **脚本猫**：[scriptcat.org/script-show-page/8113](https://scriptcat.org/zh-CN/script-show-page/8113)
 
 三个来源是同一份代码，Greasy Fork 和脚本猫都从本仓库自动同步。
 
@@ -122,7 +122,7 @@ npm test
 
 A userscript that exports AI conversations to turn-by-turn Markdown with one click. Supports **Claude** (share pages `claude.ai/share/*` only), **ChatGPT**, **Gemini** and **Grok** (grok.com only).
 
-- Install a userscript manager (Tampermonkey / Violentmonkey / ScriptCat), then [install from GitHub](https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js).
+- Install a userscript manager (Tampermonkey / Violentmonkey / ScriptCat), then [install from GitHub](https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js), [Greasy Fork](https://greasyfork.org/scripts/597047) or [ScriptCat](https://scriptcat.org/zh-CN/script-show-page/8113).
 - Open a conversation and click **⬇ 导出 … 会话** (Export) in the bottom-right corner.
 - Math is exported as TeX; tool calls and thinking are collapsed into a short italic note; attachments are marked but not exported.
 - The UI and output labels are in Chinese. Set `USER_LABEL` in `CFG` to change your name in the output.
