@@ -2,6 +2,8 @@
 
 一键把 AI 会话导出成**逐轮 Markdown** 的油猴脚本。支持 Claude（分享页）、ChatGPT、Gemini、Grok。
 
+**它适合谁：** 想把 AI 会话当资料长期归档、日后还要翻阅和检索的人。它不做多格式备份，只输出一种结构固定、方便阅读的 Markdown：文件头写明日期、参与者和来源，正文按「第 N 轮」分节，公式保留为 TeX，工具调用和思考过程压成一行小注，不打断正文。所有站点导出的格式都一样，放进笔记软件或 Git 仓库里能直接对比、搜索。如果你要的是 PDF、JSON 等多种格式，或者需要支持更多站点，Greasy Fork 上有覆盖面更广的同类脚本。
+
 *English summary at the bottom.*
 
 ## 安装
@@ -121,6 +123,8 @@ npm test
 ## English
 
 A userscript that exports AI conversations to turn-by-turn Markdown with one click. Supports **Claude** (share pages `claude.ai/share/*` only), **ChatGPT**, **Gemini** and **Grok** (grok.com only).
+
+Built for archiving rather than backup: every site produces the same fixed, readable layout — a header with date, participants and source, one section per turn, math kept as TeX, and tool calls / thinking collapsed into a one-line note — so exports sit well in a notes app or a Git repo. If you need PDF/JSON or more sites, broader exporters exist on Greasy Fork.
 
 - Install a userscript manager (Tampermonkey / Violentmonkey / ScriptCat), then [install from GitHub](https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js), [Greasy Fork](https://greasyfork.org/scripts/597047) or [ScriptCat](https://scriptcat.org/zh-CN/script-show-page/8113).
 - Open a conversation and click **⬇ 导出 … 会话** (Export) in the bottom-right corner.
