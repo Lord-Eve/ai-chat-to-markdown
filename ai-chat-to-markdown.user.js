@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.2
+// @version      2.2.3
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -90,6 +90,30 @@
   // 去掉嵌套在另一条消息里的重复命中
   function dropNested(list) {
     return list.filter((m) => !list.some((o) => o !== m && o.el.contains(m.el)));
+  }
+
+  // ChatGPT 新界面切换会话时不刷新页面，上一个会话会藏起来留在 DOM 里。
+  // 用网址里的会话 ID 找到当前会话的滚动区，收集只在它里面进行。
+  const chatgptConvId = () => (location.pathname.match(/\/c\/([\w-]+)/) || [])[1] || null;
+
+  function chatgptThread() {
+    const roots = Array.from(document.querySelectorAll('[data-app-action-timeline-scroll]'));
+    if (roots.length <= 1) return roots[0] || null;
+    const id = chatgptConvId();
+    const own = id && roots.find((r) =>
+      r.querySelector(`[data-chatgpt-selection-conversation-id="${CSS.escape(id)}"]`));
+    const visible = (r) => r.clientHeight > 0 && (!r.checkVisibility || r.checkVisibility({ visibilityProperty: true }));
+    return own || roots.find(visible) || roots[roots.length - 1];
+  }
+
+  // 整轮都标着别的会话 ID 的，是残留的旧会话
+  function chatgptForeign(unit) {
+    const id = chatgptConvId();
+    const turn = unit.closest('[data-content-search-turn-key]');
+    if (!id || !turn) return false;
+    const ids = Array.from(turn.querySelectorAll('[data-chatgpt-selection-conversation-id]'))
+      .map((e) => attr(e, 'data-chatgpt-selection-conversation-id'));
+    return ids.length > 0 && !ids.includes(id);
   }
 
   // ChatGPT 新界面：取 AI 单元前面、同一轮里的「思考了 17s」这类活动块，只要第一行
@@ -193,7 +217,7 @@
       // 2026-10 起登录后的新界面没有这些标记，角色写在 data-content-search-unit-key 的最后一段
       // （形如 "fallback-turn-0:2:assistant"），下面统称「新界面」。
       virtualized: true,
-      scrollRoot: '[data-scroll-root], [data-app-action-timeline-scroll]',
+      scrollRoot: () => chatgptThread() || document.querySelector('[data-scroll-root]'),
       key(el) {
         const ids = el.closest('[data-chatgpt-search-message-ids]');
         return attr(el, 'data-message-id') || attr(ids, 'data-chatgpt-search-message-ids') ||
@@ -235,7 +259,8 @@
           })
           .filter((m) => m.role !== 'skip');
         if (legacy.length) return dropNested(legacy);
-        const units = Array.from(document.querySelectorAll('[data-content-search-unit-key]'))
+        const units = Array.from((chatgptThread() || document).querySelectorAll('[data-content-search-unit-key]'))
+          .filter((el) => !chatgptForeign(el))
           .map((el) => {
             const r = attr(el, 'data-content-search-unit-key').split(':').pop();
             return { role: r === 'user' ? 'user' : r === 'assistant' ? 'ai' : 'skip', el };
@@ -732,7 +757,7 @@
 
   function scrollRootFor(el) {
     if (AD.scrollRoot) {
-      const r = document.querySelector(AD.scrollRoot);
+      const r = typeof AD.scrollRoot === 'function' ? AD.scrollRoot() : document.querySelector(AD.scrollRoot);
       if (r && r.scrollHeight > r.clientHeight) return r;
     }
     return scrollParent(el);
