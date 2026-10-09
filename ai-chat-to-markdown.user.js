@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.0
+// @version      2.2.1
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -92,6 +92,22 @@
     return list.filter((m) => !list.some((o) => o !== m && o.el.contains(m.el)));
   }
 
+  // ChatGPT 新界面：取 AI 单元前面、同一轮里的「思考了 17s」这类活动块，只要第一行
+  function chatgptActivity(unit) {
+    const turn = unit.closest('[data-content-search-turn-key]');
+    if (!turn) return '';
+    const before = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const prev = Array.from(turn.querySelectorAll('[data-content-search-unit-key]'))
+      .filter((u) => u !== unit && !u.contains(unit) && before(u, unit))
+      .pop();
+    return Array.from(turn.querySelectorAll('[data-chatgpt-agent-turn-start]'))
+      .map((s) => s.parentElement)
+      .filter((b) => b && !b.contains(unit) && before(b, unit) && (!prev || before(prev, b)))
+      .map((b) => (b.innerText || b.textContent || '').trim().split('\n')[0].trim())
+      .filter(Boolean)
+      .join('；');
+  }
+
   const pickAll = (list) => {
     for (const s of list) {
       const found = document.querySelectorAll(s);
@@ -172,14 +188,24 @@
 
     {
       id: 'chatgpt',
-      // ChatGPT 的会话是虚拟列表：只渲染视口附近的消息，要边滚边收集
+      // ChatGPT 的会话是虚拟列表：只渲染视口附近的消息，要边滚边收集。
+      // 页面有两套结构：分享页和未登录页面用 data-message-author-role；
+      // 2026-10 起登录后的新界面没有这些标记，角色写在 data-content-search-unit-key 的最后一段
+      // （形如 "fallback-turn-0:2:assistant"），下面统称「新界面」。
       virtualized: true,
-      scrollRoot: '[data-scroll-root]',
-      key: (el) => attr(el, 'data-message-id') || null,
+      scrollRoot: '[data-scroll-root], [data-app-action-timeline-scroll]',
+      key(el) {
+        const ids = el.closest('[data-chatgpt-search-message-ids]');
+        return attr(el, 'data-message-id') || attr(ids, 'data-chatgpt-search-message-ids') ||
+          attr(el, 'data-content-search-unit-key') || null;
+      },
       index(el) {
         const t = el.closest('[data-testid^="conversation-turn-"]');
         const n = t ? parseInt(attr(t, 'data-testid').replace(/\D+/g, ''), 10) : NaN;
-        return Number.isFinite(n) ? n : null;
+        if (Number.isFinite(n)) return n;
+        // 新界面：轮次和单元序号都在 key 里；不是 fallback-turn-N 这种格式时退回按收集顺序排
+        const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):(\d+):/);
+        return m ? Number(m[1]) * 1000 + Number(m[2]) : null;
       },
       name: 'ChatGPT',
       label: 'ChatGPT',
@@ -196,20 +222,46 @@
         '[data-message-id]',
         '[data-testid^="conversation-turn-"]',
         '[data-scroll-root]',
+        '[data-content-search-unit-key]',
+        '[data-user-message-bubble]',
+        '[data-markdown-text-style="assistant-message"]',
+        '[data-app-action-timeline-scroll]',
       ],
       collect() {
-        const list = Array.from(document.querySelectorAll('[data-message-author-role]'))
+        const legacy = Array.from(document.querySelectorAll('[data-message-author-role]'))
           .map((el) => {
             const r = attr(el, 'data-message-author-role');
             return { role: r === 'user' ? 'user' : r === 'assistant' ? 'ai' : 'skip', el };
           })
           .filter((m) => m.role !== 'skip');
-        return dropNested(list);
+        if (legacy.length) return dropNested(legacy);
+        const units = Array.from(document.querySelectorAll('[data-content-search-unit-key]'))
+          .map((el) => {
+            const r = attr(el, 'data-content-search-unit-key').split(':').pop();
+            return { role: r === 'user' ? 'user' : r === 'assistant' ? 'ai' : 'skip', el };
+          })
+          .filter((m) => m.role !== 'skip');
+        return dropNested(units);
       },
-      content: (el, role) =>
-        role === 'user'
-          ? el.querySelector('.whitespace-pre-wrap') || el
-          : el.querySelector('.markdown') || el,
+      content(el, role) {
+        if (role === 'user') {
+          return el.querySelector('.whitespace-pre-wrap') || el.querySelector('[data-user-message-bubble]') || el;
+        }
+        if (el.hasAttribute('data-message-author-role')) return el.querySelector('.markdown') || el;
+        // 新界面：一个 AI 单元里可能有多条消息；「思考了 17s」在单元前面的独立块里，
+        // 取出来放在开头，交给下面的 tool 规则压成斜体小注
+        const roots = el.querySelectorAll('[data-markdown-text-style="assistant-message"], [class*="MarkdownRoot-"]');
+        const box = document.createElement('div');
+        const note = chatgptActivity(el);
+        if (note && isTool(note)) {
+          const p = document.createElement('p');
+          p.textContent = note;
+          box.appendChild(p);
+        }
+        const parts = dropNested(Array.from(roots).map((r) => ({ el: r }))).map((m) => m.el);
+        (parts.length ? parts : [el]).forEach((r) => box.appendChild(r.cloneNode(true)));
+        return box;
+      },
       clean(c) {
         c.querySelectorAll('.sr-only').forEach((n) => n.remove());
       },
@@ -228,6 +280,7 @@
         /^reasoned for\b.*/i,
         /^searched\s+\d+\s+sites?.*/i,
         /^已思考.*/,
+        /^思考了.*/,
         /^已搜索.*/,
       ],
     },
@@ -645,9 +698,18 @@
     return document.scrollingElement || document.documentElement;
   }
 
+  // 页面刚打开或刚切换会话时内容可能还没渲染出来，等一会儿再判断「没有消息」
+  async function firstMessage(ms = 8000) {
+    for (let t = 0; ; t += 400) {
+      const first = AD.collect()[0];
+      if (first || t >= ms) return first || null;
+      await sleep(400);
+    }
+  }
+
   async function preload() {
     if (!CFG.AUTO_LOAD) return;
-    const first = AD.collect()[0];
+    const first = await firstMessage();
     if (!first) return;
     const sc = scrollParent(first.el);
     if (!sc) return;
@@ -677,7 +739,7 @@
   }
 
   async function harvest(btn) {
-    const first = AD.collect()[0];
+    const first = await firstMessage();
     if (!first) return [];
     const sc = scrollRootFor(first.el);
     const seen = new Map();
@@ -769,6 +831,8 @@
 
   function doDebugDump() {
     const tagged = AD.collect();
+    // 只在会话区域里取样；侧边栏元素多，整页取样会被它占满
+    const area = document.querySelector('main') || document.body;
     const dump = {
       url: location.href,
       adapter: AD.id,
@@ -779,14 +843,20 @@
         ai: tagged.filter((m) => m.role === 'ai').length,
       },
       probes: AD.probes.map((s) => ({ selector: s, count: document.querySelectorAll(s).length })),
-      sampleTags: [...new Set(Array.from(document.querySelectorAll('body *')).slice(0, 3000)
+      sampleTags: [...new Set(Array.from(area.querySelectorAll('*')).slice(0, 3000)
         .map((n) => n.tagName.toLowerCase()).filter((t) => t.includes('-')))].slice(0, 80),
       sampleClasses: [...new Set(
-        Array.from(document.querySelectorAll('body div[class]'))
+        Array.from(area.querySelectorAll('div[class]'))
           .slice(0, 400)
           .flatMap((n) => Array.from(n.classList))
       )].slice(0, 200),
+      sampleDataAttrs: [...new Set(
+        Array.from(area.querySelectorAll('*')).slice(0, 3000)
+          .flatMap((n) => n.getAttributeNames().filter((a) => a.startsWith('data-')))
+      )].slice(0, 120),
+      iframes: document.querySelectorAll('iframe').length,
       bodyTextLength: (document.body.innerText || document.body.textContent || '').length,
+      areaTextLength: (area.innerText || area.textContent || '').length,
     };
     console.log('[导出] 诊断数据', dump);
     download(`${AD.id}-debug-${todayStr()}.json`, JSON.stringify(dump, null, 2));
