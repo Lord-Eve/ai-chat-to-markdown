@@ -114,6 +114,16 @@ const CASES = [
     },
   },
   {
+    name: 'ChatGPT 导出途中切换会话：应取消，不能把两个会话拼在一起',
+    url: 'https://chatgpt.com/c/app-shell-test',
+    html: fixture('chatgpt-app-shell.html'),
+    async during(page) {
+      await page.waitForTimeout(2500); // 已经开始逐屏收集
+      await page.evaluate(() => history.pushState({}, '', '/c/another-conversation'));
+    },
+    expectAlert: /已取消/,
+  },
+  {
     name: 'Gemini 会话页',
     url: 'https://gemini.google.com/app/abc123',
     html: fixture('gemini-chat.html'),
@@ -195,6 +205,21 @@ async function runCase(browser, c) {
     ]);
     const dump = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
     assert.deepStrictEqual(dump.roles, c.diag, '诊断数据里的角色计数');
+  }
+
+  if (c.expectAlert) {
+    let downloaded = false;
+    page.on('download', () => { downloaded = true; });
+    const dialog = page.waitForEvent('dialog', { timeout: 60000 });
+    await exportBtn.click();
+    if (c.during) await c.during(page);
+    const d = await dialog;
+    assert.match(d.message(), c.expectAlert, '提示内容');
+    await d.accept();
+    await page.waitForTimeout(1500);
+    assert.ok(!downloaded, '取消后不应下载文件');
+    await context.close();
+    return;
   }
 
   const [dl] = await Promise.all([

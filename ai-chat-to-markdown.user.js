@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.1
+// @version      2.2.2
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -744,6 +744,15 @@
     const sc = scrollRootFor(first.el);
     const seen = new Map();
     let seq = 0;
+    // 单页应用切换会话不会刷新页面；中途换了会话或滚动区被替换，就停下来，免得把两个会话拼在一起
+    const startUrl = location.href;
+    const guard = () => {
+      if (location.href !== startUrl || !sc.isConnected) {
+        const e = new Error('导出途中页面切换到了别的会话，已取消。\n请在要导出的会话里重新点一次。');
+        e.userFacing = true;
+        throw e;
+      }
+    };
 
     const grab = () => {
       for (const m of AD.collect()) {
@@ -770,21 +779,26 @@
     let lastH = -1;
     let stable = 0;
     for (let i = 0; i < 30 && stable < 2; i++) {
-      sc.scrollTop = 0;
+      // 设成极小的负数：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
+      sc.scrollTop = -1e9;
       await sleep(400);
+      guard();
       grab();
       if (sc.scrollHeight === lastH) stable++;
       else { stable = 0; lastH = sc.scrollHeight; }
     }
 
-    // 2. 逐屏往下滚，连续两次停在底部才算完
+    // 2. 逐屏往下滚，连续两次滚不动才算到底。
+    // 不用 scrollTop + clientHeight >= scrollHeight 判断：倒序容器的 scrollTop 是相对底部的负数，那个条件永远不成立
     const step = Math.max(200, Math.floor(sc.clientHeight * 0.6));
     let bottom = 0;
     for (let i = 0; i < 3000 && bottom < 2; i++) {
-      sc.scrollTop = Math.min(sc.scrollTop + step, sc.scrollHeight);
+      const before = sc.scrollTop;
+      sc.scrollTop = before + step;
       await sleep(300);
+      guard();
       grab();
-      if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4) bottom++;
+      if (Math.abs(sc.scrollTop - before) < 1) bottom++;
       else bottom = 0;
     }
 
@@ -821,6 +835,7 @@
       const { title, date, text } = build(items);
       download(`${date}-${AD.name}-${sanitizeFilename(title)}.md`, text);
     } catch (e) {
+      if (e.userFacing) { alert(e.message); return; }
       console.error('[导出] 出错', e);
       alert('导出出错：' + e.message + '\n控制台（F12）里有详细信息，欢迎截图提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues');
     } finally {
