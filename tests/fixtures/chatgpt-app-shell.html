@@ -1,11 +1,13 @@
 <!doctype html><html><head><meta charset="utf-8"><title>App Shell Test</title>
 <style>body{margin:0;display:flex}nav{width:200px}main{flex:1}
-.thread-scroll-container{height:600px;overflow-y:auto;position:relative}
+.thread-scroll-container{height:600px;overflow-y:auto;position:relative;display:flex;flex-direction:column-reverse}
+#spacer{flex-shrink:0}
 #spacer{position:relative}[data-content-search-turn-key]{position:absolute;left:0;right:0;height:300px;box-sizing:border-box}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden}</style></head>
 <body>
 <!-- 2026-10 登录态 ChatGPT 新界面：没有 data-message-author-role / data-message-id / data-scroll-root，
-     角色写在 data-content-search-unit-key 的最后一段里。结构按真实页面的诊断骨架简化而来。 -->
+     角色写在 data-content-search-unit-key 的最后一段里。结构按真实页面的诊断骨架简化而来。
+     滚动容器是 flex-col-reverse：在底部时 scrollTop 为 0，往上滚是负数。 -->
 <nav data-app-shell-page-sidebar>
   <div data-app-action-sidebar-section><a data-sidebar-chatgpt-conversation-key="x">Health使用指南</a><a>每日关注简报</a></div>
 </nav>
@@ -51,9 +53,11 @@ function make(i) {
     '</div><div class="turn-action-controls"><button aria-label="复制">复制</button></div></div></div>';
   return t;
 }
+// 倒序容器里 scrollTop 是相对底部的负数，换算成「离顶部多远」
+const fromTop = () => root.scrollTop + root.scrollHeight - root.clientHeight;
 function render() {
-  const lo = Math.max(0, Math.floor((root.scrollTop - root.clientHeight) / H));
-  const hi = Math.min(N - 1, Math.ceil((root.scrollTop + 2 * root.clientHeight) / H));
+  const lo = Math.max(0, Math.floor((fromTop() - root.clientHeight) / H));
+  const hi = Math.min(N - 1, Math.ceil((fromTop() + 2 * root.clientHeight) / H));
   for (const [i, el] of mounted) if (i < lo || i > hi) { el.remove(); mounted.delete(i); }
   for (let i = lo; i <= hi; i++) if (!mounted.has(i)) { const el = make(i); spacer.appendChild(el); mounted.set(i, el); }
 }
@@ -61,7 +65,7 @@ function render() {
 setTimeout(() => {
   spacer.style.height = (N * H) + 'px';
   root.addEventListener('scroll', render);
-  root.scrollTop = N * H; // 打开时停在底部
+  // 倒序容器打开时天然停在底部（scrollTop = 0）
   render();
 }, 1000);
 </script>
