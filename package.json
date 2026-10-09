@@ -1,6 +1,6 @@
 {
   "name": "ai-chat-to-markdown",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "private": true,
   "description": "Userscript: export Claude / ChatGPT / Gemini / Grok conversations to turn-by-turn Markdown",
   "license": "MIT",

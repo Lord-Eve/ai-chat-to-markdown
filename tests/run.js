@@ -86,12 +86,12 @@ const CASES = [
     },
   },
   {
-    name: 'ChatGPT 登录态新界面（无角色标记、虚拟列表、内容延迟出现）',
+    name: 'ChatGPT 登录态新界面（无角色标记、倒序滚动、内容延迟出现、旧会话残留在页面里）',
     url: 'https://chatgpt.com/c/app-shell-test',
     html: fixture('chatgpt-app-shell.html'),
     timeout: 120000,
     async before(page) {
-      const n = await page.evaluate(() => document.querySelectorAll('[data-content-search-unit-key]').length);
+      const n = await page.evaluate(() => document.querySelectorAll('#active-thread [data-content-search-unit-key]').length);
       assert.strictEqual(n, 0, '点导出时会话还没加载出来，脚本应等待而不是直接报错');
     },
     check(md, { title, turns }) {
@@ -111,6 +111,7 @@ const CASES = [
         }
       });
       assert.doesNotMatch(md, /你说|ChatGPT 说|^复制$|每日关注简报|9月24日/m, '读屏标题、按钮、侧边栏、日期分隔不应进正文');
+      assert.doesNotMatch(md, /previous chat/, '藏在页面里的上一个会话不应混进来');
     },
   },
   {

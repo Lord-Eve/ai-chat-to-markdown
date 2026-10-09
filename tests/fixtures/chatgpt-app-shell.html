@@ -12,13 +12,22 @@
   <div data-app-action-sidebar-section><a data-sidebar-chatgpt-conversation-key="x">Health使用指南</a><a>每日关注简报</a></div>
 </nav>
 <main>
+  <!-- 切换会话后，上一个会话的页面没有被删掉，只是藏起来留在 DOM 里（而且排在前面） -->
+  <div class="WorkspaceContent-dnr6uY" style="visibility:hidden;position:absolute;inset:0" aria-hidden="true">
+    <div class="thread-scroll-container overflow-y-auto" data-app-action-timeline-scroll role="region" aria-label="对话"><div style="height:1200px">
+      <div data-content-search-turn-key="fallback-turn-0">
+        <div data-content-search-unit-key="fallback-turn-0:0:user"><div data-user-message-bubble="true">Old question from previous chat</div></div>
+        <div data-content-search-unit-key="fallback-turn-0:2:assistant"><div data-chatgpt-selection-conversation-id="old-conversation-id" data-chatgpt-selection-message-id="old1"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message"><p>Old answer from previous chat</p></div></div></div>
+      </div>
+    </div></div>
+  </div>
   <div class="WorkspaceContent-dnr6uY">
-    <div class="thread-scroll-container overflow-y-auto" data-app-action-timeline-scroll role="region" aria-label="对话"><div id="spacer"></div></div>
+    <div id="active-thread" class="thread-scroll-container overflow-y-auto" data-app-action-timeline-scroll role="region" aria-label="对话"><div id="spacer"></div></div>
   </div>
 </main>
 <script>
 // 共 N 轮，每轮一个用户单元 + 一个 AI 单元，只挂载视口上下各一屏以内的轮次
-const N = 20, H = 300, root = document.querySelector('[data-app-action-timeline-scroll]'), spacer = document.getElementById('spacer');
+const N = 20, H = 300, root = document.getElementById('active-thread'), spacer = document.getElementById('spacer');
 const mounted = new Map();
 function make(i) {
   const n = i + 1, key = 'fallback-turn-' + i;
@@ -32,7 +41,7 @@ function make(i) {
     // 一个 AI 单元里有两条消息（例如先给中间说明、再给正式回答）
     ? '<div class="group" data-chatgpt-selection-message-id="a' + n + 'x"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message"><p class="Paragraph-kKnbIo">先查一下资料。</p></div></div>' +
       '<div class="group" data-chatgpt-selection-message-id="a' + n + '"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message"><p class="Paragraph-kKnbIo">Answer ' + n + '</p></div></div>'
-    : '<div class="group" data-chatgpt-selection-conversation-id="c1" data-chatgpt-selection-message-id="a' + n + '"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message">' +
+    : '<div class="group" data-chatgpt-selection-conversation-id="app-shell-test" data-chatgpt-selection-message-id="a' + n + '"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message">' +
       '<p class="Paragraph-kKnbIo">Answer ' + n + (n === 1 ? ' with <strong>bold</strong> and <code>code</code>.' : '') + '</p>' +
       (n === 1 ? '<ul class="List-kOVW5V"><li class="ListItem-ncLgmg">item one</li><li class="ListItem-ncLgmg">item two</li></ul>' : '') +
       '</div></div>';
