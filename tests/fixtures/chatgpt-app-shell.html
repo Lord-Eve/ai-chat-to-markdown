@@ -1,0 +1,68 @@
+<!doctype html><html><head><meta charset="utf-8"><title>App Shell Test</title>
+<style>body{margin:0;display:flex}nav{width:200px}main{flex:1}
+.thread-scroll-container{height:600px;overflow-y:auto;position:relative}
+#spacer{position:relative}[data-content-search-turn-key]{position:absolute;left:0;right:0;height:300px;box-sizing:border-box}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden}</style></head>
+<body>
+<!-- 2026-10 登录态 ChatGPT 新界面：没有 data-message-author-role / data-message-id / data-scroll-root，
+     角色写在 data-content-search-unit-key 的最后一段里。结构按真实页面的诊断骨架简化而来。 -->
+<nav data-app-shell-page-sidebar>
+  <div data-app-action-sidebar-section><a data-sidebar-chatgpt-conversation-key="x">Health使用指南</a><a>每日关注简报</a></div>
+</nav>
+<main>
+  <div class="WorkspaceContent-dnr6uY">
+    <div class="thread-scroll-container overflow-y-auto" data-app-action-timeline-scroll role="region" aria-label="对话"><div id="spacer"></div></div>
+  </div>
+</main>
+<script>
+// 共 N 轮，每轮一个用户单元 + 一个 AI 单元，只挂载视口上下各一屏以内的轮次
+const N = 20, H = 300, root = document.querySelector('[data-app-action-timeline-scroll]'), spacer = document.getElementById('spacer');
+const mounted = new Map();
+function make(i) {
+  const n = i + 1, key = 'fallback-turn-' + i;
+  const t = document.createElement('div');
+  t.setAttribute('data-content-search-turn-key', key);
+  t.style.top = (i * H) + 'px';
+  const thinking = n % 3 === 1
+    ? '<div class="block-BQZwFn"><span hidden data-chatgpt-agent-turn-start></span><div class="flex"><div class="group/activity-header inline-flex"><button><span>思考了 ' + (10 + n) + 's</span><svg></svg></button></div></div></div>'
+    : '';
+  const answer = n === 2
+    // 一个 AI 单元里有两条消息（例如先给中间说明、再给正式回答）
+    ? '<div class="group" data-chatgpt-selection-message-id="a' + n + 'x"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message"><p class="Paragraph-kKnbIo">先查一下资料。</p></div></div>' +
+      '<div class="group" data-chatgpt-selection-message-id="a' + n + '"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message"><p class="Paragraph-kKnbIo">Answer ' + n + '</p></div></div>'
+    : '<div class="group" data-chatgpt-selection-conversation-id="c1" data-chatgpt-selection-message-id="a' + n + '"><div class="MarkdownRoot-rZKhxa" data-markdown-text-style="assistant-message">' +
+      '<p class="Paragraph-kKnbIo">Answer ' + n + (n === 1 ? ' with <strong>bold</strong> and <code>code</code>.' : '') + '</p>' +
+      (n === 1 ? '<ul class="List-kOVW5V"><li class="ListItem-ncLgmg">item one</li><li class="ListItem-ncLgmg">item two</li></ul>' : '') +
+      '</div></div>';
+  t.innerHTML =
+    (n === 1 ? '<div role="separator" data-markdown-copy="exclude"><time datetime="2026-09-24T14:15:33Z"><span>9月24日周四 7:15</span></time></div>' : '') +
+    '<div class="flex flex-col gap-1.5"><div class="group flex flex-col" data-talvt-turn-state="complete"><div class="flex flex-col gap-3">' +
+      '<div class="block-BQZwFn"><h4 class="sr-only">你说：</h4>' +
+        '<div class="group/user-message" data-chatgpt-search-unit-key="' + key + ':0:user" data-chatgpt-search-message-ids="u' + n + '">' +
+          '<div class="w-full" data-content-search-unit-key="' + key + ':0:user"><div class="group/user-message items-end">' +
+            '<div class="bg-user-message bubble-vBnidZ" data-user-message-bubble="true"><div class="flex flex-col items-end gap-1"><div>Question ' + n + '</div></div></div>' +
+          '</div></div>' +
+        '</div>' +
+      '</div>' +
+      thinking +
+      '<div class="block-BQZwFn"><div data-content-search-unit-key="' + key + ':2:assistant" data-chatgpt-search-unit-key="' + key + ':2:assistant" data-chatgpt-search-message-ids="a' + n + '">' +
+        '<h4 class="sr-only" data-conversation-role="assistant">ChatGPT 说：</h4><div>' + answer + '</div>' +
+      '</div></div>' +
+    '</div><div class="turn-action-controls"><button aria-label="复制">复制</button></div></div></div>';
+  return t;
+}
+function render() {
+  const lo = Math.max(0, Math.floor((root.scrollTop - root.clientHeight) / H));
+  const hi = Math.min(N - 1, Math.ceil((root.scrollTop + 2 * root.clientHeight) / H));
+  for (const [i, el] of mounted) if (i < lo || i > hi) { el.remove(); mounted.delete(i); }
+  for (let i = lo; i <= hi; i++) if (!mounted.has(i)) { const el = make(i); spacer.appendChild(el); mounted.set(i, el); }
+}
+// 会话内容晚一秒才出现，模拟登录态页面的加载延迟
+setTimeout(() => {
+  spacer.style.height = (N * H) + 'px';
+  root.addEventListener('scroll', render);
+  root.scrollTop = N * H; // 打开时停在底部
+  render();
+}, 1000);
+</script>
+</body></html>

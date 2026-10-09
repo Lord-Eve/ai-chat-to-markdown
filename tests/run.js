@@ -86,6 +86,34 @@ const CASES = [
     },
   },
   {
+    name: 'ChatGPT 登录态新界面（无角色标记、虚拟列表、内容延迟出现）',
+    url: 'https://chatgpt.com/c/app-shell-test',
+    html: fixture('chatgpt-app-shell.html'),
+    timeout: 120000,
+    async before(page) {
+      const n = await page.evaluate(() => document.querySelectorAll('[data-content-search-unit-key]').length);
+      assert.strictEqual(n, 0, '点导出时会话还没加载出来，脚本应等待而不是直接报错');
+    },
+    check(md, { title, turns }) {
+      assert.strictEqual(title, 'App Shell Test');
+      assert.strictEqual(turns.length, 20, '20 轮一轮不缺');
+      turns.forEach((t, i) => {
+        const n = i + 1;
+        assert.strictEqual(t.user, `Question ${n}`, `第 ${n} 轮用户`);
+        if (n === 1) {
+          assert.strictEqual(t.ai, '*（思考了 11s）*\n\nAnswer 1 with **bold** and `code`.\n\n- item one\n- item two');
+        } else if (n === 2) {
+          assert.strictEqual(t.ai, '先查一下资料。\n\nAnswer 2', '一个 AI 单元里的多条消息都要导出');
+        } else if (n % 3 === 1) {
+          assert.strictEqual(t.ai, `*（思考了 ${10 + n}s）*\n\nAnswer ${n}`, `第 ${n} 轮思考小注`);
+        } else {
+          assert.strictEqual(t.ai, `Answer ${n}`, `第 ${n} 轮 AI`);
+        }
+      });
+      assert.doesNotMatch(md, /你说|ChatGPT 说|^复制$|每日关注简报|9月24日/m, '读屏标题、按钮、侧边栏、日期分隔不应进正文');
+    },
+  },
+  {
     name: 'Gemini 会话页',
     url: 'https://gemini.google.com/app/abc123',
     html: fixture('gemini-chat.html'),
