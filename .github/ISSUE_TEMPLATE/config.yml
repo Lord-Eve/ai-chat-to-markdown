@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 更新日志 / Changelog
+    url: https://github.com/Lord-Eve/ai-chat-to-markdown/blob/main/CHANGELOG.md
+    about: 先看看最新版本是否已经修复了你遇到的问题。
+  - name: Greasy Fork
+    url: https://greasyfork.org/scripts/597047
+    about: 脚本主页与安装。

@@ -4,6 +4,15 @@
   "private": true,
   "description": "Userscript: export Claude / ChatGPT / Gemini / Grok conversations to turn-by-turn Markdown",
   "license": "MIT",
+  "author": "Lord Eve",
+  "homepage": "https://github.com/Lord-Eve/ai-chat-to-markdown#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lord-Eve/ai-chat-to-markdown.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lord-Eve/ai-chat-to-markdown/issues"
+  },
   "scripts": {
     "test": "node tests/run.js"
   },

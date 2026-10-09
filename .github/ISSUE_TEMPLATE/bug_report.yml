@@ -1,0 +1,73 @@
+name: 导出失败 / Export problem
+description: 导出没反应、内容缺失、角色分错、混入其他内容……
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先**刷新页面再试一次**，很多临时问题刷新就能解决。
+        Please refresh the page and retry before reporting.
+
+  - type: dropdown
+    id: site
+    attributes:
+      label: 站点 / Site
+      options:
+        - ChatGPT
+        - Claude（分享页）
+        - Gemini
+        - Grok
+    validations:
+      required: true
+
+  - type: dropdown
+    id: page
+    attributes:
+      label: 页面类型 / Page type
+      options:
+        - 会话页（已登录）/ Conversation (logged in)
+        - 分享页 / Share page
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 脚本版本 / Script version
+      description: 在脚本管理器里能看到，例如 2.2.3
+      placeholder: 2.2.3
+    validations:
+      required: true
+
+  - type: input
+    id: manager
+    attributes:
+      label: 脚本管理器与浏览器 / Userscript manager & browser
+      placeholder: Tampermonkey 5.x / Chrome 141
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么 / What happened
+      description: 例如：点导出没反应；只导出了一部分；用户和 AI 分反了；混进了别的会话……
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1. 打开某条会话
+        2. 点「导出」
+        3. ……
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断数据 / Diagnostics
+      description: |
+        点页面右下角的「🔧 导出诊断数据」，把下载的 JSON 拖进这里。
+        诊断数据**不含消息正文**，只有网址、标题、选择器命中数和页面结构样本；介意的话可以先删掉网址和标题。
+      placeholder: 把 chatgpt-debug-YYYY-MM-DD.json 拖到这里
