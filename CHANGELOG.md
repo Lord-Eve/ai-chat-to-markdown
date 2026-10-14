@@ -3,6 +3,13 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
+## [2.2.4] - 2026-10-14
+
+### 修复
+- **Claude：会话里只发了附件、没写文字的消息被整条漏掉**，导出时那一轮只剩 Claude 的回复。现在的 Claude 分享页里，附件缩略图和文字气泡是同一行里的兄弟元素，只发附件的消息根本没有文字气泡；现在按缩略图所在的行补回这条用户消息，标注为 `[附件：分享快照中未显示]`。
+- **Claude：附件和文字一起发时，附件标注丢失。** 同样是因为缩略图不在文字气泡里面。
+- **Claude 中文界面：「已使用 4 个工具」「已搜索网页」留在正文里**，现在会和英文界面一样压成斜体小注。
+
 ## [2.2.3] - 2026-10-09
 
 ### 修复
@@ -39,6 +46,7 @@
 - Grok 角色判断只认完整类名，避开 `md:items-end` 这类响应式变体；标题去掉「| Shared Grok Conversation」后缀。
 - 工具提示只匹配 80 字以内的短行，不再吞掉以「Searched…」开头的正文。
 
+[2.2.4]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.0...v2.2.1

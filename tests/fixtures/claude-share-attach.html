@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Claude</title></head>
+<body>
+<!-- 2026-10 的 Claude 分享页（中文界面）：附件缩略图和文字气泡是同一行里的兄弟元素，
+     只发附件的消息没有 data-testid="user-message"；页面上没有可用的标题。结构按真实诊断数据简化。 -->
+<main style="height:100vh;overflow-y:auto">
+  <div class="rounded-card">由 Test User 分享。这是 Claude 与 Test User 之间一段对话的副本。</div>
+  <div data-testid="transcript-list">
+    <!-- 第 1 条用户消息：只有附件 -->
+    <div class="mb-1 mt-[var(--msg-gap,1.5rem)] group group/message-row flex flex-col items-end gap-1">
+      <div class="flex flex-wrap gap-2 ms-auto justify-end empty:hidden">
+        <div class="group/thumbnail rounded-lg border-0.5"><div class="bg-danger-200/5">共享时会隐藏文件</div><span class="text-danger-000">!</span></div>
+      </div>
+    </div>
+    <div data-testid="assistant-message" class="font-claude-response">
+      <h3>复试科目：选初中数理</h3>
+      <p>建议选初中数理。</p>
+    </div>
+    <!-- 第 2 条用户消息：附件和文字并排 -->
+    <div class="mb-1 group group/message-row flex flex-col items-end gap-1">
+      <div class="flex flex-wrap gap-2 ms-auto justify-end empty:hidden">
+        <div class="group/thumbnail rounded-lg border-0.5"><div class="bg-danger-200/5">共享时会隐藏文件</div></div>
+      </div>
+      <div data-testid="user-message" class="cds-user-message-body"><p>你看看这份简历</p></div>
+    </div>
+    <div data-testid="assistant-message" class="font-claude-response">
+      <div>已使用 4 个工具</div>
+      <p>简历整体不错。</p>
+    </div>
+    <!-- 第 3 条用户消息：纯文字 -->
+    <div class="mb-1 group group/message-row flex flex-col items-end gap-1">
+      <div class="flex flex-wrap gap-2 ms-auto justify-end empty:hidden"></div>
+      <div data-testid="user-message" class="cds-user-message-body"><p>能找到真题吗</p></div>
+    </div>
+    <div data-testid="assistant-message" class="font-claude-response">
+      <div>已搜索网页</div>
+      <p>能找到，不用下载。</p>
+    </div>
+  </div>
+</main>
+</body></html>

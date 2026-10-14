@@ -56,6 +56,23 @@ const CASES = [
     },
   },
   {
+    name: 'Claude 分享页（中文界面，只发附件的消息、附件与文字并排）',
+    url: 'https://claude.ai/share/attach-test',
+    html: fixture('claude-share-attach.html'),
+    diag: { user: 3, ai: 3 },
+    check(md, { title, turns }) {
+      assert.strictEqual(title, '你看看这份简历', '页面没有标题时，用第一条有文字的用户消息');
+      assert.strictEqual(turns.length, 3, '只发附件的那条也要算一轮');
+      assert.strictEqual(turns[0].user, '> *[附件：分享快照中未显示]*', '只发附件的消息只留附件标注');
+      assert.match(turns[0].ai, /^### 复试科目：选初中数理/);
+      assert.strictEqual(turns[1].user, '> *[附件：分享快照中未显示]*\n\n你看看这份简历', '和文字并排的附件也要标注');
+      assert.strictEqual(turns[1].ai, '*（已使用 4 个工具）*\n\n简历整体不错。');
+      assert.strictEqual(turns[2].user, '能找到真题吗');
+      assert.strictEqual(turns[2].ai, '*（已搜索网页）*\n\n能找到，不用下载。');
+      assert.doesNotMatch(md, /共享时会隐藏文件|由 Test User 分享/);
+    },
+  },
+  {
     name: 'ChatGPT 静态页',
     url: 'https://chatgpt.com/c/static-test',
     html: fixture('chatgpt-static.html'),

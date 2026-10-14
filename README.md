@@ -114,7 +114,7 @@
 
 ## 开发与测试
 
-`tests/` 里是 Playwright 测试：把站点域名的请求拦截到本地模拟页，注入脚本，点击导出，再检查 Markdown 的结构（轮数、角色、公式、代码块、表格、工具小注等）。模拟页包括四个站点的静态页、Gemini 分享页、一个只挂载视口附近消息的 ChatGPT 虚拟列表页，以及 ChatGPT 登录后的新界面（2026-10 改版：没有角色标记、倒序滚动容器、内容延迟出现、上一个会话残留在页面里），另有一个「导出途中切换会话」的用例。每次推送和 PR 都会在 [GitHub Actions](https://github.com/Lord-Eve/ai-chat-to-markdown/actions/workflows/test.yml) 上自动运行。
+`tests/` 里是 Playwright 测试：把站点域名的请求拦截到本地模拟页，注入脚本，点击导出，再检查 Markdown 的结构（轮数、角色、公式、代码块、表格、工具小注等）。模拟页包括四个站点的静态页、Claude 中文界面分享页（含只发附件的消息）、Gemini 分享页、一个只挂载视口附近消息的 ChatGPT 虚拟列表页，以及 ChatGPT 登录后的新界面（2026-10 改版：没有角色标记、倒序滚动容器、内容延迟出现、上一个会话残留在页面里），另有一个「导出途中切换会话」的用例。每次推送和 PR 都会在 [GitHub Actions](https://github.com/Lord-Eve/ai-chat-to-markdown/actions/workflows/test.yml) 上自动运行。
 
 ```bash
 npm install

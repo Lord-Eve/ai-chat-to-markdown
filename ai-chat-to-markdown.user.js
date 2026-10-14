@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.3
+// @version      2.2.4
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -164,6 +164,28 @@
     ],
   };
 
+  // Claude 分享页的附件缩略图和文字气泡是同一行里的兄弟元素；只发附件的消息根本没有文字气泡
+  const CLAUDE_FILE_SEL = '[class*="group/thumbnail"], [data-testid="file-thumbnail"], [data-testid="attachment"]';
+  const HIDDEN_FILE_TEXT = /^(files hidden when shared|共享时会隐藏文件)$/i;
+
+  // 不在任何消息里的附件，往上找到它所在的那一行（不越过包含其他消息的容器）
+  function claudeOrphanAttachments(msgs) {
+    const inMsg = (el) => msgs.some((m) => m.contains(el));
+    const scope = document.querySelector('[data-testid="transcript-list"]') || document;
+    const marks = [
+      ...scope.querySelectorAll(CLAUDE_FILE_SEL),
+      ...Array.from(scope.querySelectorAll('div, span, p'))
+        .filter((n) => !n.children.length && HIDDEN_FILE_TEXT.test(n.textContent.trim())),
+    ].filter((f) => !inMsg(f));
+    const rows = marks.map((f) => {
+      let row = f;
+      while (row.parentElement && row.parentElement !== document.body &&
+             !msgs.some((m) => row.parentElement.contains(m))) row = row.parentElement;
+      return row;
+    });
+    return [...new Set(rows)];
+  }
+
   const ADAPTERS = [
     {
       id: 'claude',
@@ -177,10 +199,19 @@
       collect() {
         const u = pickAll(CLAUDE_SEL.user);
         const a = pickAll(CLAUDE_SEL.ai);
-        return dropNested(sortDoc([
+        const files = claudeOrphanAttachments([...u.nodes, ...a.nodes]);
+        const list = dropNested(sortDoc([
           ...u.nodes.map((el) => ({ role: 'user', el })),
           ...a.nodes.map((el) => ({ role: 'ai', el })),
+          ...files.map((el) => ({ role: 'user', el, attachOnly: true })),
         ]));
+        // 附件和文字在同一行：挂到那条文字消息上；行里只有附件：单独算一条用户消息
+        return list.filter((m, i) => {
+          const next = list[i + 1];
+          if (!m.attachOnly || !next || next.role !== 'user' || !m.el.parentElement.contains(next.el)) return true;
+          next.attach = true;
+          return false;
+        });
       },
       content: (el) => el,
       clean: () => {},
@@ -197,6 +228,7 @@
         /^turn on web search in search and tools menu/i,
         /^otherwise, links provided may not be accurate/i,
         /^files hidden when shared$/i,
+        /^共享时会隐藏文件$/,
       ],
       tool: [
         /^used\s+\d+\s+tools?$/i,
@@ -206,6 +238,10 @@
         /^ran\s+a\s+command.*/i,
         /^thought\s+for\s+.*/i,
         /^使用了.*工具.*/,
+        /^已使用.*工具.*/,
+        /^已?搜索(了)?网页.*/,
+        /^已?运行(了)?.*命令.*/,
+        /^思考了.*/,
         /^已?读取记忆.*/,
       ],
     },
@@ -631,7 +667,7 @@
     const hasFile = !!el.querySelector(FILE_SEL);
     const imgs = Array.from(el.querySelectorAll('img'))
       .filter((i) => !/avatar|头像|profile/i.test(attr(i, 'alt') + ' ' + cls(i)));
-    if (hasFile || imgs.length || /files hidden when shared/i.test(el.textContent)) {
+    if (hasFile || imgs.length || /files hidden when shared|共享时会隐藏文件/i.test(el.textContent)) {
       return `> *[附件：${AD.attachNote}]*`;
     }
     return null;
@@ -641,11 +677,10 @@
 
   // 消息在收集时就渲染成 Markdown（虚拟列表里的元素滚走后会被卸载）
   function toItems(tagged) {
-    return tagged.map((m) => ({
-      role: m.role,
-      md: renderMessage(m.el, m.role),
-      note: attachmentNote(m.el, m.role),
-    }));
+    const fileNote = `> *[附件：${AD.attachNote}]*`;
+    return tagged.map((m) => m.attachOnly
+      ? { role: 'user', md: '', note: fileNote }
+      : { role: m.role, md: renderMessage(m.el, m.role), note: attachmentNote(m.el, m.role) || (m.attach ? fileNote : null) });
   }
 
   function firstUserSnippet(items) {
