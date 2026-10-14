@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.3
+// @version      2.2.4
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -34,6 +34,8 @@
     AUTO_LOAD: true,
     // 显示「导出诊断数据」按钮（页面改版导致导出失败时，用它生成排错用的 JSON）
     DIAG_BUTTON: true,
+    // 页面上取不到会话标题时（比如 Claude 分享页），导出前弹窗确认标题；关掉则直接用第一条用户消息
+    ASK_TITLE: true,
     // 在控制台（F12）打印调试日志
     DEBUG: false,
   };
@@ -164,6 +166,28 @@
     ],
   };
 
+  // Claude 分享页的附件缩略图和文字气泡是同一行里的兄弟元素；只发附件的消息根本没有文字气泡
+  const CLAUDE_FILE_SEL = '[class*="group/thumbnail"], [data-testid="file-thumbnail"], [data-testid="attachment"]';
+  const HIDDEN_FILE_TEXT = /^(files hidden when shared|共享时会隐藏文件)$/i;
+
+  // 不在任何消息里的附件，往上找到它所在的那一行（不越过包含其他消息的容器）
+  function claudeOrphanAttachments(msgs) {
+    const inMsg = (el) => msgs.some((m) => m.contains(el));
+    const scope = document.querySelector('[data-testid="transcript-list"]') || document;
+    const marks = [
+      ...scope.querySelectorAll(CLAUDE_FILE_SEL),
+      ...Array.from(scope.querySelectorAll('div, span, p'))
+        .filter((n) => !n.children.length && HIDDEN_FILE_TEXT.test(n.textContent.trim())),
+    ].filter((f) => !inMsg(f));
+    const rows = marks.map((f) => {
+      let row = f;
+      while (row.parentElement && row.parentElement !== document.body &&
+             !msgs.some((m) => row.parentElement.contains(m))) row = row.parentElement;
+      return row;
+    });
+    return [...new Set(rows)];
+  }
+
   const ADAPTERS = [
     {
       id: 'claude',
@@ -177,17 +201,28 @@
       collect() {
         const u = pickAll(CLAUDE_SEL.user);
         const a = pickAll(CLAUDE_SEL.ai);
-        return dropNested(sortDoc([
+        const files = claudeOrphanAttachments([...u.nodes, ...a.nodes]);
+        const list = dropNested(sortDoc([
           ...u.nodes.map((el) => ({ role: 'user', el })),
           ...a.nodes.map((el) => ({ role: 'ai', el })),
+          ...files.map((el) => ({ role: 'user', el, attachOnly: true })),
         ]));
+        // 附件和文字在同一行：挂到那条文字消息上；行里只有附件：单独算一条用户消息
+        return list.filter((m, i) => {
+          const next = list[i + 1];
+          if (!m.attachOnly || !next || next.role !== 'user' || !m.el.parentElement.contains(next.el)) return true;
+          next.attach = true;
+          return false;
+        });
       },
       content: (el) => el,
       clean: () => {},
       title() {
-        const h = document.querySelector('h1, [data-testid="chat-title"]');
+        // 2026-10 起分享页不再显示会话标题（<title> 和 og:title 都只是 "Claude"），这里留着以防它回来
+        const h = document.querySelector('h1, [data-testid="chat-title"], [data-testid="chat-title-button"], [data-testid="share-title"]');
         if (h && h.textContent.trim()) return h.textContent.trim();
-        return stripTitle(document.title, ['Claude']);
+        const og = document.querySelector('meta[property="og:title"]');
+        return stripTitle(document.title, ['Claude']) || stripTitle(og ? attr(og, 'content') : '', ['Claude']);
       },
       noise: [
         /^shared by\b/i,
@@ -197,6 +232,7 @@
         /^turn on web search in search and tools menu/i,
         /^otherwise, links provided may not be accurate/i,
         /^files hidden when shared$/i,
+        /^共享时会隐藏文件$/,
       ],
       tool: [
         /^used\s+\d+\s+tools?$/i,
@@ -206,6 +242,10 @@
         /^ran\s+a\s+command.*/i,
         /^thought\s+for\s+.*/i,
         /^使用了.*工具.*/,
+        /^已使用.*工具.*/,
+        /^已?搜索(了)?网页.*/,
+        /^已?运行(了)?.*命令.*/,
+        /^思考了.*/,
         /^已?读取记忆.*/,
       ],
     },
@@ -631,7 +671,7 @@
     const hasFile = !!el.querySelector(FILE_SEL);
     const imgs = Array.from(el.querySelectorAll('img'))
       .filter((i) => !/avatar|头像|profile/i.test(attr(i, 'alt') + ' ' + cls(i)));
-    if (hasFile || imgs.length || /files hidden when shared/i.test(el.textContent)) {
+    if (hasFile || imgs.length || /files hidden when shared|共享时会隐藏文件/i.test(el.textContent)) {
       return `> *[附件：${AD.attachNote}]*`;
     }
     return null;
@@ -641,11 +681,10 @@
 
   // 消息在收集时就渲染成 Markdown（虚拟列表里的元素滚走后会被卸载）
   function toItems(tagged) {
-    return tagged.map((m) => ({
-      role: m.role,
-      md: renderMessage(m.el, m.role),
-      note: attachmentNote(m.el, m.role),
-    }));
+    const fileNote = `> *[附件：${AD.attachNote}]*`;
+    return tagged.map((m) => m.attachOnly
+      ? { role: 'user', md: '', note: fileNote }
+      : { role: m.role, md: renderMessage(m.el, m.role), note: attachmentNote(m.el, m.role) || (m.attach ? fileNote : null) });
   }
 
   function firstUserSnippet(items) {
@@ -655,8 +694,17 @@
     return t.length > 30 ? t.slice(0, 30) + '…' : t;
   }
 
-  function build(items) {
-    const title = AD.title() || firstUserSnippet(items) || '未命名会话';
+  // 页面上取不到标题时，用第一条用户消息做建议值，按设置弹窗让用户确认或改写
+  function resolveTitle(items) {
+    const own = AD.title();
+    if (own) return own;
+    const guess = firstUserSnippet(items) || '未命名会话';
+    if (!CFG.ASK_TITLE) return guess;
+    const input = prompt('这个页面上没有会话标题。\n确认或修改导出文件的标题：', guess);
+    return (input && input.trim()) || guess;
+  }
+
+  function build(items, title) {
     const date = todayStr();
 
     const turns = [];
@@ -857,7 +905,7 @@
         );
         return;
       }
-      const { title, date, text } = build(items);
+      const { title, date, text } = build(items, resolveTitle(items));
       download(`${date}-${AD.name}-${sanitizeFilename(title)}.md`, text);
     } catch (e) {
       if (e.userFacing) { alert(e.message); return; }
