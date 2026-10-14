@@ -34,6 +34,8 @@
     AUTO_LOAD: true,
     // 显示「导出诊断数据」按钮（页面改版导致导出失败时，用它生成排错用的 JSON）
     DIAG_BUTTON: true,
+    // 页面上取不到会话标题时（比如 Claude 分享页），导出前弹窗确认标题；关掉则直接用第一条用户消息
+    ASK_TITLE: true,
     // 在控制台（F12）打印调试日志
     DEBUG: false,
   };
@@ -216,9 +218,11 @@
       content: (el) => el,
       clean: () => {},
       title() {
-        const h = document.querySelector('h1, [data-testid="chat-title"]');
+        // 2026-10 起分享页不再显示会话标题（<title> 和 og:title 都只是 "Claude"），这里留着以防它回来
+        const h = document.querySelector('h1, [data-testid="chat-title"], [data-testid="chat-title-button"], [data-testid="share-title"]');
         if (h && h.textContent.trim()) return h.textContent.trim();
-        return stripTitle(document.title, ['Claude']);
+        const og = document.querySelector('meta[property="og:title"]');
+        return stripTitle(document.title, ['Claude']) || stripTitle(og ? attr(og, 'content') : '', ['Claude']);
       },
       noise: [
         /^shared by\b/i,
@@ -690,8 +694,17 @@
     return t.length > 30 ? t.slice(0, 30) + '…' : t;
   }
 
-  function build(items) {
-    const title = AD.title() || firstUserSnippet(items) || '未命名会话';
+  // 页面上取不到标题时，用第一条用户消息做建议值，按设置弹窗让用户确认或改写
+  function resolveTitle(items) {
+    const own = AD.title();
+    if (own) return own;
+    const guess = firstUserSnippet(items) || '未命名会话';
+    if (!CFG.ASK_TITLE) return guess;
+    const input = prompt('这个页面上没有会话标题。\n确认或修改导出文件的标题：', guess);
+    return (input && input.trim()) || guess;
+  }
+
+  function build(items, title) {
     const date = todayStr();
 
     const turns = [];
@@ -892,7 +905,7 @@
         );
         return;
       }
-      const { title, date, text } = build(items);
+      const { title, date, text } = build(items, resolveTitle(items));
       download(`${date}-${AD.name}-${sanitizeFilename(title)}.md`, text);
     } catch (e) {
       if (e.userFacing) { alert(e.message); return; }
