@@ -59,20 +59,22 @@ const CASES = [
     name: 'Claude 分享页（中文界面，只发附件的消息、附件与文字并排）',
     url: 'https://claude.ai/share/attach-test',
     html: fixture('claude-share-attach.html'),
-    diag: { user: 3, ai: 3 },
+    diag: { user: 4, ai: 4 },
     promptAnswer: '复试与试岗准备',
     check(md, { title, turns }, { prompts, fname }) {
       assert.strictEqual(prompts.length, 1, '页面没有标题时应弹窗确认一次');
       assert.strictEqual(prompts[0].defaultValue, '你看看这份简历', '建议标题是第一条有文字的用户消息');
       assert.strictEqual(title, '复试与试岗准备', '用用户填写的标题');
       assert.match(fname, /-Claude-复试与试岗准备\.md$/, '文件名也用用户填写的标题');
-      assert.strictEqual(turns.length, 3, '只发附件的那条也要算一轮');
+      assert.strictEqual(turns.length, 4, '只发附件的那条也要算一轮');
       assert.strictEqual(turns[0].user, '> *[附件：分享快照中未显示]*', '只发附件的消息只留附件标注');
       assert.match(turns[0].ai, /^### 复试科目：选初中数理/);
       assert.strictEqual(turns[1].user, '> *[附件：分享快照中未显示]*\n\n你看看这份简历', '和文字并排的附件也要标注');
       assert.strictEqual(turns[1].ai, '*（已使用 4 个工具）*\n\n简历整体不错。');
       assert.strictEqual(turns[2].user, '能找到真题吗');
       assert.strictEqual(turns[2].ai, '*（已搜索网页）*\n\n能找到，不用下载。');
+      assert.strictEqual(turns[3].user, '搜索网页需要注意什么？', '用户消息不套用工具提示规则');
+      assert.strictEqual(turns[3].ai, '*（思考了 1m 28s）*\n\n已使用工具前先想清楚要查什么。\n\n思考了很久之后再搜，效果更好。', '只认完整的短标签，正文句子要保留');
       assert.doesNotMatch(md, /共享时会隐藏文件|由 Test User 分享/);
     },
   },

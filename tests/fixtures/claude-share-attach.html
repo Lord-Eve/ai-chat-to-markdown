@@ -35,6 +35,15 @@
       <div>已搜索网页</div>
       <p>能找到，不用下载。</p>
     </div>
+    <!-- 第 4 条：正文恰好以「搜索网页」「已使用…工具」「思考了」开头，不能被当成工具提示 -->
+    <div class="mb-1 group group/message-row flex flex-col items-end gap-1">
+      <div data-testid="user-message" class="cds-user-message-body"><p>搜索网页需要注意什么？</p></div>
+    </div>
+    <div data-testid="assistant-message" class="font-claude-response">
+      <div>思考了 1m 28s</div>
+      <p>已使用工具前先想清楚要查什么。</p>
+      <p>思考了很久之后再搜，效果更好。</p>
+    </div>
   </div>
 </main>
 </body></html>
