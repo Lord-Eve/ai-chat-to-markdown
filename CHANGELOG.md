@@ -3,6 +3,11 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
+## [2.2.5] - 2026-10-15
+
+### 修复
+- **正文里以「搜索网页」「已使用…工具」「思考了」开头的句子被误当成工具提示**，从正文里消失、变成斜体小注（2.2.4 引入）。现在工具和思考提示的规则只用在 AI 回复上，用户消息原样保留；中文界面的状态标签只认「已搜索网页」「已使用 4 个工具」「思考了 1m 28s」这样完整的短标签。感谢 Codex 代码审查指出。
+
 ## [2.2.4] - 2026-10-14
 
 ### 新增
@@ -49,6 +54,7 @@
 - Grok 角色判断只认完整类名，避开 `md:items-end` 这类响应式变体；标题去掉「| Shared Grok Conversation」后缀。
 - 工具提示只匹配 80 字以内的短行，不再吞掉以「Searched…」开头的正文。
 
+[2.2.5]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.1...v2.2.2

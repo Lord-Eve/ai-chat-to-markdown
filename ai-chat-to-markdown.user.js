@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.4
+// @version      2.2.5
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -242,10 +242,11 @@
         /^ran\s+a\s+command.*/i,
         /^thought\s+for\s+.*/i,
         /^使用了.*工具.*/,
-        /^已使用.*工具.*/,
-        /^已?搜索(了)?网页.*/,
-        /^已?运行(了)?.*命令.*/,
-        /^思考了.*/,
+        // 中文界面的状态标签只认完整的短标签，免得吞掉以这些字开头的正文
+        /^已使用\s*(\d+|一|两|几)?\s*个?工具$/,
+        /^已?搜索(了)?\s*(\d+\s*个)?网页$/,
+        /^已?运行(了)?\s*(\d+\s*(个|条))?命令$/,
+        /^思考了\s*(\d+(\.\d+)?\s*(h|m|s|小时|分钟|分|秒)\s*)+$/i,
         /^已?读取记忆.*/,
       ],
     },
@@ -345,7 +346,7 @@
         /^reasoned for\b.*/i,
         /^searched\s+\d+\s+sites?.*/i,
         /^已思考.*/,
-        /^思考了.*/,
+        /^思考了\s*(\d+(\.\d+)?\s*(h|m|s|小时|分钟|分|秒)\s*)+$/i,
         /^已搜索.*/,
       ],
     },
@@ -654,7 +655,8 @@
       const bare = line.replace(/^[>\-*\s]+/, '').trim();
       if (!bare) { out.push(line); continue; }
       if (isNoise(bare)) continue;
-      if (isTool(bare)) { tools.push(bare); continue; }
+      // 工具和思考提示只出现在 AI 回复里；用户消息原样保留
+      if (role !== 'user' && isTool(bare)) { tools.push(bare); continue; }
       out.push(line);
     }
 
