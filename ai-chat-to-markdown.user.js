@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.2.5
+// @version      2.3.0
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -32,7 +32,7 @@
     REDACT_CONTACTS: false,
     // 导出前自动滚动，把懒加载的早期消息加载出来
     AUTO_LOAD: true,
-    // 显示「导出诊断数据」按钮（页面改版导致导出失败时，用它生成排错用的 JSON）
+    // 在右侧「导出」菜单的第二行显示「导出诊断数据」（页面改版导致导出失败时，用它生成排错用的 JSON）
     DIAG_BUTTON: true,
     // 页面上取不到会话标题时（比如 Claude 分享页），导出前弹窗确认标题；关掉则直接用第一条用户消息
     ASK_TITLE: true,
@@ -195,7 +195,6 @@
       label: 'Claude',
       test: () => location.hostname === 'claude.ai' && location.pathname.startsWith('/share/'),
       loadFrom: 'bottom',
-      btnBottom: 16,
       attachNote: '分享快照中未显示',
       probes: [...CLAUDE_SEL.user, ...CLAUDE_SEL.ai],
       collect() {
@@ -276,7 +275,6 @@
       label: 'ChatGPT',
       test: () => /(^|\.)chatgpt\.com$/.test(location.hostname) || location.hostname === 'chat.openai.com',
       loadFrom: 'top',
-      btnBottom: 120,
       attachNote: '图片或文件，未随文本导出',
       probes: [
         '[data-message-author-role]',
@@ -357,7 +355,6 @@
       label: 'Gemini',
       test: () => location.hostname === 'gemini.google.com',
       loadFrom: 'top',
-      btnBottom: 120,
       attachNote: '图片或文件，未随文本导出',
       probes: [
         'user-query',
@@ -415,7 +412,6 @@
       label: 'Grok',
       test: () => location.hostname === 'grok.com',
       loadFrom: 'top',
-      btnBottom: 120,
       attachNote: '图片或文件，未随文本导出',
       probes: [
         '.message-bubble',
@@ -886,10 +882,27 @@
 
   /* ===================== 按钮与入口 ===================== */
 
+  // 导出进行中时菜单保持打开，方便看进度；这时不响应收起
+  let exporting = false;
+
+  function setPanelOpen(open) {
+    const panel = document.getElementById('ai2md-panel');
+    const tab = document.getElementById('ai2md-tab');
+    if (!panel) return;
+    // 导出还在跑时不允许收起。否则诊断按钮会把进度藏起来，
+    // 而标签、空白处和 Esc 又被 exporting 挡住，菜单就打不开了。
+    if (!open && exporting) return;
+    panel.hidden = !open;
+    // hidden 属性在部分页面样式下不够，显式盖住 display
+    panel.style.display = open ? 'grid' : 'none';
+    if (tab) tab.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   async function doExport(btn) {
     const label = btn.textContent;
     btn.textContent = '⏳ 加载完整会话…';
     btn.disabled = true;
+    exporting = true;
     try {
       let items;
       if (AD.virtualized) {
@@ -903,7 +916,7 @@
         alert(
           `没在这个 ${AD.name} 页面上找到会话内容。\n\n` +
           '常见原因：还没打开具体某条会话，或页面结构改版了。\n' +
-          '仍然失败的话，点「🔧 导出诊断数据」，把下载的 JSON 提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues'
+          '仍然失败的话，点右侧「导出」，再点「导出诊断数据」，把下载的 JSON 提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues'
         );
         return;
       }
@@ -914,8 +927,10 @@
       console.error('[导出] 出错', e);
       alert('导出出错：' + e.message + '\n控制台（F12）里有详细信息，欢迎截图提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues');
     } finally {
+      exporting = false;
       btn.textContent = label;
       btn.disabled = false;
+      setPanelOpen(false);
     }
   }
 
@@ -950,45 +965,125 @@
     };
     console.log('[导出] 诊断数据', dump);
     download(`${AD.id}-debug-${todayStr()}.json`, JSON.stringify(dump, null, 2));
+    setPanelOpen(false);
   }
 
   function mountButtons() {
     if (!document.body || document.getElementById('ai2md-bar')) return;
 
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const fg = dark ? '#f3f3f3' : '#333';
+    const bg = dark ? '#2b2b2b' : '#fff';
+    const line = dark ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.14)';
+    const shadow = dark ? '0 2px 10px rgba(0,0,0,.45)' : '0 2px 10px rgba(0,0,0,.14)';
+    const font = '14px/1.4 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+
     const bar = document.createElement('div');
     bar.id = 'ai2md-bar';
+    // 贴在窗口右缘、大约中上的位置，并留出底部 240px，避开输入框和右下角。
+    // 层级不用整数最大值，站点自己的弹窗可以盖住它。
     bar.style.cssText = [
-      'position:fixed', 'right:16px', `bottom:${AD.btnBottom}px`, 'z-index:2147483647',
-      'display:flex', 'flex-direction:column', 'gap:8px',
-      'font:14px/1.4 system-ui,-apple-system,"PingFang SC",sans-serif',
+      'all:initial',
+      'position:fixed',
+      'right:0',
+      'top:clamp(72px, 28vh, calc(100vh - 240px))',
+      'z-index:9999',
+      'display:flex',
+      'flex-direction:row',
+      'align-items:flex-start',
+      'gap:8px',
+      `font:${font}`,
+      'color-scheme:light dark',
     ].join(';');
+
+    const panel = document.createElement('div');
+    panel.id = 'ai2md-panel';
+    panel.hidden = true;
+    panel.style.cssText = 'display:none;grid-auto-flow:row;gap:6px;justify-items:stretch;';
 
     const mk = (label, onClick, primary) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = label;
       b.style.cssText = [
+        'all:unset',
+        'box-sizing:border-box',
+        `font:${font}`,
         'padding:9px 14px',
         'border-radius:8px',
-        'border:1px solid rgba(0,0,0,.12)',
-        primary ? 'background:#c96442' : 'background:#fff',
-        primary ? 'color:#fff' : 'color:#333',
+        `border:1px solid ${line}`,
+        primary ? 'background:#c96442' : `background:${bg}`,
+        primary ? 'color:#fff' : `color:${fg}`,
         'cursor:pointer',
-        'box-shadow:0 2px 10px rgba(0,0,0,.14)',
+        `box-shadow:${shadow}`,
+        'width:100%',
+        'text-align:center',
         'white-space:nowrap',
       ].join(';');
       b.addEventListener('click', () => onClick(b));
       return b;
     };
 
-    bar.appendChild(mk(`⬇ 导出 ${AD.name} 会话`, doExport, true));
-    if (CFG.DIAG_BUTTON) bar.appendChild(mk('🔧 导出诊断数据', doDebugDump, false));
+    const exportBtn = mk(`导出 ${AD.name} 会话`, doExport, true);
+    exportBtn.id = 'ai2md-export';
+    panel.appendChild(exportBtn);
+    if (CFG.DIAG_BUTTON) {
+      const diagBtn = mk('导出诊断数据', doDebugDump, false);
+      diagBtn.id = 'ai2md-diag';
+      panel.appendChild(diagBtn);
+    }
+
+    const tab = document.createElement('button');
+    tab.id = 'ai2md-tab';
+    tab.type = 'button';
+    tab.textContent = '导出';
+    tab.title = `导出 ${AD.name} 会话`;
+    tab.setAttribute('aria-expanded', 'false');
+    tab.setAttribute('aria-controls', 'ai2md-panel');
+    tab.style.cssText = [
+      'all:unset',
+      'box-sizing:border-box',
+      `font:${font}`,
+      'padding:12px 7px',
+      'border-radius:8px 0 0 8px',
+      `border:1px solid ${line}`,
+      'border-right:none',
+      `background:${bg}`,
+      'color:#c96442',
+      'cursor:pointer',
+      `box-shadow:${shadow}`,
+      'writing-mode:vertical-rl',
+      'letter-spacing:0.14em',
+    ].join(';');
+    tab.addEventListener('click', () => {
+      // 导出进行中只禁止收起；若菜单已经被收起，仍允许再打开
+      if (exporting && !panel.hidden) return;
+      setPanelOpen(panel.hidden);
+    });
+
+    bar.append(panel, tab);
     document.body.appendChild(bar);
     log('按钮已挂载：', AD.name);
   }
 
+  function bindBarDismiss() {
+    if (bindBarDismiss.done) return;
+    bindBarDismiss.done = true;
+    document.addEventListener('click', (e) => {
+      if (exporting) return;
+      const bar = document.getElementById('ai2md-bar');
+      if (!bar || bar.contains(e.target)) return;
+      setPanelOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (exporting || e.key !== 'Escape') return;
+      setPanelOpen(false);
+    });
+  }
+
   const ready = () => {
     mountButtons();
+    bindBarDismiss();
     // 单页应用会整块重绘页面，按钮被冲掉时自动补回
     new MutationObserver(() => mountButtons()).observe(document.body, { childList: true, subtree: true });
   };

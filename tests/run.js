@@ -109,6 +109,30 @@ const CASES = [
     },
   },
   {
+    name: '导出进行中点诊断：菜单保持打开，进度不被锁死',
+    url: 'https://chatgpt.com/c/virtual-test',
+    html: fixture('chatgpt-virtual.html'),
+    timeout: 120000,
+    async duringExport(page) {
+      const [dl] = await Promise.all([
+        page.waitForEvent('download'),
+        page.locator('#ai2md-diag').click(),
+      ]);
+      const dump = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
+      assert.strictEqual(dump.adapter, 'chatgpt');
+      const panel = page.locator('#ai2md-panel');
+      assert.strictEqual(await panel.isVisible(), true, '导出进行中点诊断，菜单不应收起');
+      assert.match(await page.locator('#ai2md-export').textContent(), /已收集|加载/, '进度文字还在');
+      await page.locator('#ai2md-tab').click();
+      assert.strictEqual(await panel.isVisible(), true, '导出进行中点标签，菜单仍应开着');
+      await page.keyboard.press('Escape');
+      assert.strictEqual(await panel.isVisible(), true, '导出进行中按 Esc，菜单仍应开着');
+    },
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30, '诊断没有打断导出');
+    },
+  },
+  {
     name: 'ChatGPT 登录态新界面（无角色标记、倒序滚动、内容延迟出现、旧会话残留在页面里）',
     url: 'https://chatgpt.com/c/app-shell-test',
     html: fixture('chatgpt-app-shell.html'),
@@ -197,6 +221,32 @@ const CASES = [
 
 /* ---------- 运行 ---------- */
 
+// 点开右侧贴边标签。诊断在点开之前不可见，并且排在导出会话的下一行。
+async function openExportMenu(page) {
+  const tab = page.locator('#ai2md-tab');
+  await tab.waitFor();
+  const box = await tab.boundingBox();
+  const vp = page.viewportSize();
+  assert.ok(box, '导出标签应可见');
+  assert.ok(box.x + box.width >= vp.width - 2, `导出标签应贴在窗口右缘，实际 right=${box.x + box.width}，视口 ${vp.width}`);
+  assert.ok(box.y + box.height <= vp.height - 160, `导出标签应避开底部 160px，实际 bottom=${box.y + box.height}，界限 ${vp.height - 160}`);
+  const barStyle = await page.locator('#ai2md-bar').evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { position: s.position, right: s.right, zIndex: s.zIndex };
+  });
+  assert.strictEqual(barStyle.position, 'fixed');
+  assert.strictEqual(barStyle.right, '0px');
+  assert.ok(Number(barStyle.zIndex) < 2147483647, '标签不应再用整数最大层级');
+  const diag = page.locator('#ai2md-diag');
+  assert.strictEqual(await diag.isVisible(), false, '点开标签之前，诊断不可见');
+  await tab.click();
+  await page.locator('#ai2md-export').waitFor({ state: 'visible' });
+  assert.strictEqual(await diag.isVisible(), true, '点开标签之后，诊断出现在菜单里');
+  const labels = await page.locator('#ai2md-panel button').allTextContents();
+  assert.match(labels[0], /^导出 .+ 会话$/, '第一行是导出会话');
+  assert.strictEqual(labels[1], '导出诊断数据', '第二行是诊断');
+}
+
 async function runCase(browser, c) {
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1200, height: 800 } });
   const page = await context.newPage();
@@ -228,16 +278,17 @@ async function runCase(browser, c) {
   if (c.before) await c.before(page);
   await page.addScriptTag({ content: SCRIPT });
 
-  const exportBtn = page.locator('#ai2md-bar button').first();
-  await exportBtn.waitFor();
+  const exportBtn = page.locator('#ai2md-export');
+  await openExportMenu(page);
 
   if (c.diag) {
     const [dl] = await Promise.all([
       page.waitForEvent('download'),
-      page.locator('#ai2md-bar button', { hasText: '诊断' }).click(),
+      page.locator('#ai2md-diag').click(),
     ]);
     const dump = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
     assert.deepStrictEqual(dump.roles, c.diag, '诊断数据里的角色计数');
+    await openExportMenu(page);
   }
 
   if (c.expectAlert) {
@@ -255,10 +306,18 @@ async function runCase(browser, c) {
     return;
   }
 
-  const [dl] = await Promise.all([
-    page.waitForEvent('download', { timeout: c.timeout || 30000 }),
-    exportBtn.click(),
-  ]);
+  let dl;
+  if (c.duringExport) {
+    // 诊断下载发生在 Markdown 下载之前，必须先单独接住，不能让下面的等待把它拿走
+    await exportBtn.click();
+    await c.duringExport(page);
+    dl = await page.waitForEvent('download', { timeout: c.timeout || 30000 });
+  } else {
+    [dl] = await Promise.all([
+      page.waitForEvent('download', { timeout: c.timeout || 30000 }),
+      exportBtn.click(),
+    ]);
+  }
   const md = fs.readFileSync(await dl.path(), 'utf8');
   const fname = await page.evaluate(() => window.__dlName);
   assert.match(fname, /^\d{4}-\d{2}-\d{2}-(Claude|ChatGPT|Gemini|Grok)-.+\.md$/, '文件名格式');
