@@ -229,7 +229,9 @@ async function openExportMenu(page) {
   const vp = page.viewportSize();
   assert.ok(box, '导出标签应可见');
   assert.ok(box.x + box.width >= vp.width - 2, `导出标签应贴在窗口右缘，实际 right=${box.x + box.width}，视口 ${vp.width}`);
-  assert.ok(box.y + box.height <= vp.height - 160, `导出标签应避开底部 160px，实际 bottom=${box.y + box.height}，界限 ${vp.height - 160}`);
+  const fromBottom = vp.height - (box.y + box.height);
+  assert.ok(fromBottom <= 24, `导出标签应贴在右下角，实际离底边 ${fromBottom}px`);
+  assert.ok(box.y > vp.height / 2, `导出标签不应留在视口上半部，实际 top=${box.y}`);
   const barStyle = await page.locator('#ai2md-bar').evaluate((el) => {
     const s = getComputedStyle(el);
     return { position: s.position, right: s.right, zIndex: s.zIndex };

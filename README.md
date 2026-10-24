@@ -26,12 +26,12 @@
 
 ## 使用
 
-打开一条会话，窗口右缘中间偏上会出现一条竖排的 **导出**。点开后：
+打开一条会话，窗口右下角会出现一条竖排的 **导出**。点开后：
 
 - **第一行，导出 XX 会话**：自动滚动加载完整会话，然后下载 `.md` 文件
 - **第二行，导出诊断数据**：导出失败时用来排错（见下文）
 
-平时它只占右缘一条窄边，不挡输入框和右下角的发送键。点页面空白处，或按 Esc，菜单会收起。
+平时它只占右下角一条窄边。点页面空白处，或按 Esc，菜单会收起。
 
 导出过程中别滚动页面，长会话可能要等几十秒。中途切换到别的会话，导出会自动取消，不会把两个会话混在一起。
 
@@ -143,7 +143,7 @@ A userscript that exports AI conversations to turn-by-turn Markdown with one cli
 Built for archiving rather than backup: every site produces the same fixed, readable layout — a header with date, participants and source, one section per turn, math kept as TeX, and tool calls / thinking collapsed into a one-line note — so exports sit well in a notes app or a Git repo. If you need PDF/JSON or more sites, broader exporters exist on Greasy Fork.
 
 - Install a userscript manager (Tampermonkey / Violentmonkey / ScriptCat), then [install from GitHub](https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js), [Greasy Fork](https://greasyfork.org/scripts/597047) or [ScriptCat](https://scriptcat.org/zh-CN/script-show-page/8113).
-- Open a conversation and click the **导出** (Export) tab on the right edge. The first menu row exports the conversation; the second row exports diagnostics.
+- Open a conversation and click the **导出** (Export) tab in the bottom-right corner. The first menu row exports the conversation; the second row exports diagnostics.
 - Math is exported as TeX; tool calls and thinking are collapsed into a short italic note; attachments are marked but not exported.
 - The UI and output labels are in Chinese. Set `USER_LABEL` in `CFG` to change your name in the output.
 - The script updates itself automatically; see the [changelog](CHANGELOG.md) and [releases](https://github.com/Lord-Eve/ai-chat-to-markdown/releases) for what changed.

@@ -3,6 +3,11 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
+## [2.3.1] - 2026-10-24
+
+### 修复
+- **贴边「导出」改回右下角。** 2.3.0 把它放在窗口右缘大约三分之一的高度，会挡住 ChatGPT 右侧活动栏里的内容。现在贴在右下角，仍然只是一条窄标签；点开后菜单往上展开。
+
 ## [2.3.0] - 2026-10-23
 
 ### 改进
@@ -60,6 +65,7 @@
 - Grok 角色判断只认完整类名，避开 `md:items-end` 这类响应式变体；标题去掉「| Shared Grok Conversation」后缀。
 - 工具提示只匹配 80 字以内的短行，不再吞掉以「Searched…」开头的正文。
 
+[2.3.1]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.5...v2.3.0
 [2.2.5]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.3...v2.2.4
