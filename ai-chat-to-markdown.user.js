@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.3.0
+// @version      2.3.1
 // @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
@@ -980,17 +980,17 @@
 
     const bar = document.createElement('div');
     bar.id = 'ai2md-bar';
-    // 贴在窗口右缘、大约中上的位置，并留出底部 240px，避开输入框和右下角。
+    // 贴在窗口右下角。只占一条窄边，菜单往上展开，不挡右侧栏里的内容。
     // 层级不用整数最大值，站点自己的弹窗可以盖住它。
     bar.style.cssText = [
       'all:initial',
       'position:fixed',
       'right:0',
-      'top:clamp(72px, 28vh, calc(100vh - 240px))',
+      'bottom:16px',
       'z-index:9999',
       'display:flex',
       'flex-direction:row',
-      'align-items:flex-start',
+      'align-items:flex-end',
       'gap:8px',
       `font:${font}`,
       'color-scheme:light dark',
