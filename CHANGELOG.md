@@ -3,6 +3,11 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
+## [2.3.0] - 2026-10-23
+
+### 改进
+- **导出入口从右下角两颗按钮改成右边的贴边标签。** 平时只在窗口右缘、大约中上的位置留一条「导出」，避开输入框、发送键和右下角。点开后第一行是导出会话，第二行是「导出诊断数据」。标签不再使用最高层级，站点自己的弹窗可以盖住它。
+
 ## [2.2.5] - 2026-10-15
 
 ### 修复
@@ -54,6 +59,7 @@
 - Grok 角色判断只认完整类名，避开 `md:items-end` 这类响应式变体；标题去掉「| Shared Grok Conversation」后缀。
 - 工具提示只匹配 80 字以内的短行，不再吞掉以「Searched…」开头的正文。
 
+[2.3.0]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.5...v2.3.0
 [2.2.5]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.2...v2.2.3

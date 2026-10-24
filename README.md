@@ -26,10 +26,12 @@
 
 ## 使用
 
-打开一条会话，页面右下角会出现两个按钮：
+打开一条会话，窗口右缘中间偏上会出现一条竖排的 **导出**。点开后：
 
-- **⬇ 导出 XX 会话**：自动滚动加载完整会话，然后下载 `.md` 文件
-- **🔧 导出诊断数据**：导出失败时用来排错（见下文）
+- **第一行，导出 XX 会话**：自动滚动加载完整会话，然后下载 `.md` 文件
+- **第二行，导出诊断数据**：导出失败时用来排错（见下文）
+
+平时它只占右缘一条窄边，不挡输入框和右下角的发送键。点页面空白处，或按 Esc，菜单会收起。
 
 导出过程中别滚动页面，长会话可能要等几十秒。中途切换到别的会话，导出会自动取消，不会把两个会话混在一起。
 
@@ -85,7 +87,7 @@
 | `USER_LABEL` | `'User'` | 你在 Markdown 里的称呼，比如改成 `'我'` |
 | `REDACT_CONTACTS` | `false` | 遮挡疑似手机号 / QQ 号 |
 | `AUTO_LOAD` | `true` | 导出前自动滚动加载早期消息 |
-| `DIAG_BUTTON` | `true` | 显示「导出诊断数据」按钮 |
+| `DIAG_BUTTON` | `true` | 在「导出」菜单第二行显示「导出诊断数据」 |
 | `ASK_TITLE` | `true` | 页面上取不到会话标题时（如 Claude 分享页），导出前弹窗确认标题；关掉则直接用第一条用户消息 |
 | `DEBUG` | `false` | 在控制台打印调试日志 |
 
@@ -110,7 +112,7 @@
 
 1. 确认打开的是具体某条会话，并且 Claude 用的是分享页。
 2. 刷新页面再试一次；顺便确认脚本已经是[最新版本](https://github.com/Lord-Eve/ai-chat-to-markdown/releases/latest)。
-3. 还不行的话，点 **🔧 导出诊断数据**，然后[提交问题](https://github.com/Lord-Eve/ai-chat-to-markdown/issues/new/choose)。表单会引导你填写站点、页面类型和版本号，下载的 JSON 直接拖进去就行。
+3. 还不行的话，点右侧 **导出**，再点 **导出诊断数据**，然后[提交问题](https://github.com/Lord-Eve/ai-chat-to-markdown/issues/new/choose)。表单会引导你填写站点、页面类型和版本号，下载的 JSON 直接拖进去就行。
 
 诊断 JSON **不含消息正文**，只包含：页面网址和会话标题、识别到的消息数和角色数、几个选择器的命中数、页面上的标签名和类名样本。介意的话，可以在提交前把网址和标题删掉。
 
@@ -141,8 +143,8 @@ A userscript that exports AI conversations to turn-by-turn Markdown with one cli
 Built for archiving rather than backup: every site produces the same fixed, readable layout — a header with date, participants and source, one section per turn, math kept as TeX, and tool calls / thinking collapsed into a one-line note — so exports sit well in a notes app or a Git repo. If you need PDF/JSON or more sites, broader exporters exist on Greasy Fork.
 
 - Install a userscript manager (Tampermonkey / Violentmonkey / ScriptCat), then [install from GitHub](https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js), [Greasy Fork](https://greasyfork.org/scripts/597047) or [ScriptCat](https://scriptcat.org/zh-CN/script-show-page/8113).
-- Open a conversation and click **⬇ 导出 … 会话** (Export) in the bottom-right corner.
+- Open a conversation and click the **导出** (Export) tab on the right edge. The first menu row exports the conversation; the second row exports diagnostics.
 - Math is exported as TeX; tool calls and thinking are collapsed into a short italic note; attachments are marked but not exported.
 - The UI and output labels are in Chinese. Set `USER_LABEL` in `CFG` to change your name in the output.
 - The script updates itself automatically; see the [changelog](CHANGELOG.md) and [releases](https://github.com/Lord-Eve/ai-chat-to-markdown/releases) for what changed.
-- If export breaks, click **🔧 导出诊断数据** (Export diagnostics) and [open an issue](https://github.com/Lord-Eve/ai-chat-to-markdown/issues/new/choose) with the JSON attached. It contains the page URL and title plus selector counts and page-structure samples, but no message text.
+- If export breaks, open the **导出** tab and click **导出诊断数据** (Export diagnostics), then [open an issue](https://github.com/Lord-Eve/ai-chat-to-markdown/issues/new/choose) with the JSON attached. It contains the page URL and title plus selector counts and page-structure samples, but no message text.

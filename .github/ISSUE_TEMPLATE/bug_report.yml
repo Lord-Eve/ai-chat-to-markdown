@@ -68,6 +68,6 @@ body:
     attributes:
       label: 诊断数据 / Diagnostics
       description: |
-        点页面右下角的「🔧 导出诊断数据」，把下载的 JSON 拖进这里。
+        点窗口右缘的「导出」，再点「导出诊断数据」，把下载的 JSON 拖进这里。
         诊断数据**不含消息正文**，只有网址、标题、选择器命中数和页面结构样本；介意的话可以先删掉网址和标题。
       placeholder: 把 chatgpt-debug-YYYY-MM-DD.json 拖到这里
