@@ -889,6 +889,9 @@
     const panel = document.getElementById('ai2md-panel');
     const tab = document.getElementById('ai2md-tab');
     if (!panel) return;
+    // 导出还在跑时不允许收起。否则诊断按钮会把进度藏起来，
+    // 而标签、空白处和 Esc 又被 exporting 挡住，菜单就打不开了。
+    if (!open && exporting) return;
     panel.hidden = !open;
     // hidden 属性在部分页面样式下不够，显式盖住 display
     panel.style.display = open ? 'grid' : 'none';
@@ -1053,7 +1056,8 @@
       'letter-spacing:0.14em',
     ].join(';');
     tab.addEventListener('click', () => {
-      if (exporting) return;
+      // 导出进行中只禁止收起；若菜单已经被收起，仍允许再打开
+      if (exporting && !panel.hidden) return;
       setPanelOpen(panel.hidden);
     });
 
