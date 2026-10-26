@@ -3,6 +3,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
+## [Unreleased]
+
+### 新增
+- `extension/`：Chrome / Edge Manifest V3 浏览器扩展，支持工具栏导出、本地设置页面及诊断下载。
+- `npm run build:extension` 从现有油猴脚本构建扩展核心，`npm run test:extension` 验证实际扩展加载和四个平台模拟页导出。
+
 ## [2.4.0] - 2026-10-26
 
 ### 新增
