@@ -197,6 +197,8 @@
       label: 'Claude',
       test: () => location.hostname === 'claude.ai',
       available: claudeConversation,
+      get virtualized() { return location.pathname.startsWith('/chat/'); },
+      key: (el) => attr(el, 'data-message-id') || attr(el.closest('[data-message-id]'), 'data-message-id') || null,
       get loadFrom() { return location.pathname.startsWith('/share/') ? 'bottom' : 'top'; },
       get attachNote() { return location.pathname.startsWith('/share/') ? '分享快照中未显示' : '图片或文件，未随文本导出'; },
       probes: [...CLAUDE_SEL.user, ...CLAUDE_SEL.ai],
@@ -833,7 +835,8 @@
 
     const grab = () => {
       for (const m of AD.collect()) {
-        const md = renderMessage(m.el, m.role);
+        const item = toItems([m])[0];
+        const md = item.md;
         const key = (AD.key && AD.key(m.el)) || `${m.role}|${md.slice(0, 300)}`;
         const prev = seen.get(key);
         if (prev) {
@@ -844,7 +847,7 @@
         seen.set(key, {
           role: m.role,
           md,
-          note: attachmentNote(m.el, m.role),
+          note: item.note,
           idx: AD.index ? AD.index(m.el) : null,
           seq: seq++,
         });

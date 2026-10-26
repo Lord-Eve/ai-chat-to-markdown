@@ -46,6 +46,22 @@ const claudeChatCheck = (md, { title, turns }) => {
 
 const CASES = [
   {
+    name: 'Claude 虚拟列表（60 条消息，只挂载视口附近）',
+    url: 'https://claude.ai/chat/virtual-test',
+    html: fixture('claude-virtual.html'),
+    timeout: 120000,
+    async before(page) {
+      assert.ok(await page.locator('[data-message-id]').count() < 20);
+    },
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30);
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`);
+      });
+    },
+  },
+  {
     name: 'Claude 普通会话（标题、正文、附件、输入框隔离）',
     url: 'https://claude.ai/chat/chat-test',
     html: fixture('claude-chat.html'),
