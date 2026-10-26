@@ -33,7 +33,69 @@ function parse(md) {
 
 /* ---------- 测试用例 ---------- */
 
+const claudeChatCheck = (md, { title, turns }) => {
+  assert.strictEqual(title, '普通会话');
+  assert.strictEqual(turns.length, 2);
+  assert.strictEqual(turns[0].user, '> *[附件：图片或文件，未随文本导出]*\n\n解释这份文件');
+  assert.match(turns[0].ai, /这是 \*\*回答\*\*。/);
+  assert.match(turns[0].ai, /```python\nprint\(1\)\n```/);
+  assert.strictEqual(turns[1].user, '> *[附件：图片或文件，未随文本导出]*');
+  assert.strictEqual(turns[1].ai, '看到了图片。');
+  assert.doesNotMatch(md, /尚未发送|草稿|侧栏|分享快照/);
+};
+
 const CASES = [
+  {
+    name: 'Claude 虚拟列表多条无 ID 纯附件消息（卸载重挂）',
+    url: 'https://claude.ai/chat/virtual-attachments',
+    html: fixture('claude-virtual-attachments.html'),
+    timeout: 120000,
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30);
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, i % 3 === 0
+          ? '> *[附件：图片或文件，未随文本导出]*' : `Question ${i + 1}`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`);
+      });
+    },
+  },
+  {
+    name: 'Claude 虚拟列表（60 条消息，只挂载视口附近）',
+    url: 'https://claude.ai/chat/virtual-test',
+    html: fixture('claude-virtual.html'),
+    timeout: 120000,
+    async before(page) {
+      assert.ok(await page.locator('[data-message-id]').count() < 20);
+    },
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30);
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`);
+      });
+    },
+  },
+  {
+    name: 'Claude 普通会话（标题、正文、附件、输入框隔离）',
+    url: 'https://claude.ai/chat/chat-test',
+    html: fixture('claude-chat.html'),
+    diag: { user: 2, ai: 2 },
+    check: claudeChatCheck,
+  },
+  {
+    name: 'Claude 从首页无刷新进入会话，再返回首页',
+    url: 'https://claude.ai/new',
+    html: fixture('claude-chat.html'),
+    async afterInject(page) {
+      assert.strictEqual(await page.locator('#ai2md-tab').count(), 0);
+      await page.evaluate(() => history.pushState({}, '', '/chat/chat-test'));
+      await page.locator('#ai2md-tab').waitFor({ state: 'visible' });
+      await page.evaluate(() => history.pushState({}, '', '/new'));
+      await page.locator('#ai2md-tab').waitFor({ state: 'hidden' });
+      await page.evaluate(() => history.pushState({}, '', '/chat/chat-test'));
+    },
+    check: claudeChatCheck,
+  },
   {
     name: 'Claude 分享页',
     url: 'https://claude.ai/share/test-123',
@@ -279,6 +341,7 @@ async function runCase(browser, c) {
   await page.goto(c.url);
   if (c.before) await c.before(page);
   await page.addScriptTag({ content: SCRIPT });
+  if (c.afterInject) await c.afterInject(page);
 
   const exportBtn = page.locator('#ai2md-export');
   await openExportMenu(page);

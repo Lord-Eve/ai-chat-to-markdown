@@ -6,7 +6,7 @@
 [![测试](https://img.shields.io/github/actions/workflow/status/Lord-Eve/ai-chat-to-markdown/test.yml?branch=main&label=tests)](https://github.com/Lord-Eve/ai-chat-to-markdown/actions/workflows/test.yml)
 [![许可证](https://img.shields.io/github/license/Lord-Eve/ai-chat-to-markdown)](LICENSE)
 
-一键把 AI 会话导出成**逐轮 Markdown** 的油猴脚本。支持 Claude（分享页）、ChatGPT、Gemini、Grok。
+一键把 AI 会话导出成**逐轮 Markdown** 的油猴脚本。支持 Claude（普通会话页及分享页）、ChatGPT、Gemini、Grok。
 
 **它适合谁：** 想把 AI 会话当资料长期归档、日后还要翻阅和检索的人。它不做多格式备份，只输出一种结构固定、方便阅读的 Markdown：文件头写明日期、参与者和来源，正文按「第 N 轮」分节，公式保留为 TeX，工具调用和思考过程压成一行小注，不打断正文。所有站点导出的格式都一样，放进笔记软件或 Git 仓库里能直接对比、搜索。如果你要的是 PDF、JSON 等多种格式，或者需要支持更多站点，Greasy Fork 上有覆盖面更广的同类脚本。
 
@@ -39,7 +39,7 @@
 
 | 站点 | 支持的页面 | 说明 |
 | --- | --- | --- |
-| Claude | 仅分享页 `claude.ai/share/*` | 普通会话页不支持，先点「Share」生成分享链接再导出 |
+| Claude | 普通会话页 `claude.ai/chat/*`、分享页 `claude.ai/share/*` | 登录后打开具体会话即可导出，无需创建分享链接 |
 | ChatGPT | `chatgpt.com`、`chat.openai.com` 的会话页，含登录后的新界面 | 虚拟列表，会从顶到底逐屏滚动收集；切换会话后不用刷新 |
 | Gemini | `gemini.google.com` 的会话页和分享页 | |
 | Grok | `grok.com` 的会话页和分享页 | 不支持 X（Twitter）里的 Grok |
@@ -110,7 +110,7 @@
 
 ## 导出失败怎么办
 
-1. 确认打开的是具体某条会话，并且 Claude 用的是分享页。
+1. 确认打开的是具体某条会话，Claude 可使用普通会话页或分享页。
 2. 刷新页面再试一次；顺便确认脚本已经是[最新版本](https://github.com/Lord-Eve/ai-chat-to-markdown/releases/latest)。
 3. 还不行的话，点右侧 **导出**，再点 **导出诊断数据**，然后[提交问题](https://github.com/Lord-Eve/ai-chat-to-markdown/issues/new/choose)。表单会引导你填写站点、页面类型和版本号，下载的 JSON 直接拖进去就行。
 
@@ -118,7 +118,7 @@
 
 ## 开发与测试
 
-`tests/` 里是 Playwright 测试：把站点域名的请求拦截到本地模拟页，注入脚本，点击导出，再检查 Markdown 的结构（轮数、角色、公式、代码块、表格、工具小注等）。模拟页包括四个站点的静态页、Claude 中文界面分享页（含只发附件的消息）、Gemini 分享页、一个只挂载视口附近消息的 ChatGPT 虚拟列表页，以及 ChatGPT 登录后的新界面（2026-10 改版：没有角色标记、倒序滚动容器、内容延迟出现、上一个会话残留在页面里），另有一个「导出途中切换会话」的用例。每次推送和 PR 都会在 [GitHub Actions](https://github.com/Lord-Eve/ai-chat-to-markdown/actions/workflows/test.yml) 上自动运行。
+`tests/` 里是 Playwright 测试：把站点域名的请求拦截到本地模拟页，注入脚本，点击导出，再检查 Markdown 的结构（轮数、角色、公式、代码块、表格、工具小注等）。模拟页包括四个站点的静态页、Claude 普通会话页（含附件、草稿隔离和首页无刷新跳转）、Claude 30 轮虚拟列表、Claude 中文界面分享页（含只发附件的消息）、Gemini 分享页、一个只挂载视口附近消息的 ChatGPT 虚拟列表页，以及 ChatGPT 登录后的新界面（2026-10 改版：没有角色标记、倒序滚动容器、内容延迟出现、上一个会话残留在页面里），另有一个「导出途中切换会话」的用例。每次推送和 PR 都会在 [GitHub Actions](https://github.com/Lord-Eve/ai-chat-to-markdown/actions/workflows/test.yml) 上自动运行。
 
 ```bash
 npm install
@@ -138,7 +138,7 @@ npm test
 
 ## English
 
-A userscript that exports AI conversations to turn-by-turn Markdown with one click. Supports **Claude** (share pages `claude.ai/share/*` only), **ChatGPT**, **Gemini** and **Grok** (grok.com only).
+A userscript that exports AI conversations to turn-by-turn Markdown with one click. Supports **Claude** (chat pages `claude.ai/chat/*` and share pages `claude.ai/share/*`), **ChatGPT**, **Gemini** and **Grok** (grok.com only).
 
 Built for archiving rather than backup: every site produces the same fixed, readable layout — a header with date, participants and source, one section per turn, math kept as TeX, and tool calls / thinking collapsed into a one-line note — so exports sit well in a notes app or a Git repo. If you need PDF/JSON or more sites, broader exporters exist on Greasy Fork.
 
