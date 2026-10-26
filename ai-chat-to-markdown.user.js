@@ -837,7 +837,12 @@
       for (const m of AD.collect()) {
         const item = toItems([m])[0];
         const md = item.md;
-        const key = (AD.key && AD.key(m.el)) || `${m.role}|${md.slice(0, 300)}`;
+        // 附件独立行没有正文或消息 ID；用滚动内容坐标区分，并在卸载重挂后保持一致。
+        const viewportTop = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top + sc.clientTop;
+        const attachmentKey = m.attachOnly
+          ? `attachment|${Math.round(m.el.getBoundingClientRect().top - viewportTop + sc.scrollTop)}`
+          : null;
+        const key = (AD.key && AD.key(m.el)) || attachmentKey || `${m.role}|${md.slice(0, 300)}`;
         const prev = seen.get(key);
         if (prev) {
           // 同一条消息可能先挂载了半成品，保留渲染最完整的一次

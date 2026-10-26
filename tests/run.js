@@ -46,6 +46,20 @@ const claudeChatCheck = (md, { title, turns }) => {
 
 const CASES = [
   {
+    name: 'Claude 虚拟列表多条无 ID 纯附件消息（卸载重挂）',
+    url: 'https://claude.ai/chat/virtual-attachments',
+    html: fixture('claude-virtual-attachments.html'),
+    timeout: 120000,
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30);
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, i % 3 === 0
+          ? '> *[附件：图片或文件，未随文本导出]*' : `Question ${i + 1}`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`);
+      });
+    },
+  },
+  {
     name: 'Claude 虚拟列表（60 条消息，只挂载视口附近）',
     url: 'https://claude.ai/chat/virtual-test',
     html: fixture('claude-virtual.html'),
