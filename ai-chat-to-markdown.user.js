@@ -2,16 +2,16 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.3.1
-// @description  在 Claude 分享页、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
-// @description:en  One-click export of Claude share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
+// @version      2.4.0
+// @description  在 Claude、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
+// @description:en  One-click export of Claude chats and share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
 // @license      MIT
 // @homepageURL  https://github.com/Lord-Eve/ai-chat-to-markdown
 // @supportURL   https://github.com/Lord-Eve/ai-chat-to-markdown/issues
 // @downloadURL  https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js
 // @updateURL    https://raw.githubusercontent.com/Lord-Eve/ai-chat-to-markdown/main/ai-chat-to-markdown.user.js
-// @match        https://claude.ai/share/*
+// @match        https://claude.ai/*
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -134,9 +134,9 @@
       .join('；');
   }
 
-  const pickAll = (list) => {
+  const pickAll = (list, scope = document) => {
     for (const s of list) {
-      const found = document.querySelectorAll(s);
+      const found = scope.querySelectorAll(s);
       if (found.length) return { sel: s, nodes: Array.from(found) };
     }
     return { sel: null, nodes: [] };
@@ -171,17 +171,19 @@
   const HIDDEN_FILE_TEXT = /^(files hidden when shared|共享时会隐藏文件)$/i;
 
   // 不在任何消息里的附件，往上找到它所在的那一行（不越过包含其他消息的容器）
-  function claudeOrphanAttachments(msgs) {
+  const claudeConversation = () => /^\/(chat|share)\/[^/]+\/?$/.test(location.pathname);
+  const claudeScope = () => document.querySelector('[data-testid="transcript-list"]') || document.querySelector('main') || document;
+
+  function claudeOrphanAttachments(msgs, scope) {
     const inMsg = (el) => msgs.some((m) => m.contains(el));
-    const scope = document.querySelector('[data-testid="transcript-list"]') || document;
     const marks = [
       ...scope.querySelectorAll(CLAUDE_FILE_SEL),
       ...Array.from(scope.querySelectorAll('div, span, p'))
         .filter((n) => !n.children.length && HIDDEN_FILE_TEXT.test(n.textContent.trim())),
-    ].filter((f) => !inMsg(f));
+    ].filter((f) => !inMsg(f) && !f.closest('form, [contenteditable="true"], [data-testid="chat-input"]'));
     const rows = marks.map((f) => {
       let row = f;
-      while (row.parentElement && row.parentElement !== document.body &&
+      while (row.parentElement && row.parentElement !== scope && row.parentElement !== document.body &&
              !msgs.some((m) => row.parentElement.contains(m))) row = row.parentElement;
       return row;
     });
@@ -193,14 +195,17 @@
       id: 'claude',
       name: 'Claude',
       label: 'Claude',
-      test: () => location.hostname === 'claude.ai' && location.pathname.startsWith('/share/'),
-      loadFrom: 'bottom',
-      attachNote: '分享快照中未显示',
+      test: () => location.hostname === 'claude.ai',
+      available: claudeConversation,
+      get loadFrom() { return location.pathname.startsWith('/share/') ? 'bottom' : 'top'; },
+      get attachNote() { return location.pathname.startsWith('/share/') ? '分享快照中未显示' : '图片或文件，未随文本导出'; },
       probes: [...CLAUDE_SEL.user, ...CLAUDE_SEL.ai],
       collect() {
-        const u = pickAll(CLAUDE_SEL.user);
-        const a = pickAll(CLAUDE_SEL.ai);
-        const files = claudeOrphanAttachments([...u.nodes, ...a.nodes]);
+        if (!claudeConversation()) return [];
+        const scope = claudeScope();
+        const u = pickAll(CLAUDE_SEL.user, scope);
+        const a = pickAll(CLAUDE_SEL.ai, scope);
+        const files = claudeOrphanAttachments([...u.nodes, ...a.nodes], scope);
         const list = dropNested(sortDoc([
           ...u.nodes.map((el) => ({ role: 'user', el })),
           ...a.nodes.map((el) => ({ role: 'ai', el })),
@@ -218,7 +223,8 @@
       clean: () => {},
       title() {
         // 2026-10 起分享页不再显示会话标题（<title> 和 og:title 都只是 "Claude"），这里留着以防它回来
-        const h = document.querySelector('h1, [data-testid="chat-title"], [data-testid="chat-title-button"], [data-testid="share-title"]');
+        const h = document.querySelector('[data-testid="chat-title"], [data-testid="chat-title-button"], [data-testid="share-title"]') ||
+          (location.pathname.startsWith('/share/') ? document.querySelector('h1') : null);
         if (h && h.textContent.trim()) return h.textContent.trim();
         const og = document.querySelector('meta[property="og:title"]');
         return stripTitle(document.title, ['Claude']) || stripTitle(og ? attr(og, 'content') : '', ['Claude']);
@@ -899,6 +905,7 @@
   }
 
   async function doExport(btn) {
+    const startUrl = location.href;
     const label = btn.textContent;
     btn.textContent = '⏳ 加载完整会话…';
     btn.disabled = true;
@@ -910,6 +917,11 @@
       } else {
         await preload();
         items = toItems(AD.collect());
+      }
+      if (location.href !== startUrl) {
+        const e = new Error('导出途中页面切换到了别的会话，已取消。请重新导出。');
+        e.userFacing = true;
+        throw e;
       }
       log(AD.name, '共', items.length, '条消息');
       if (!items.length) {
@@ -969,7 +981,14 @@
   }
 
   function mountButtons() {
-    if (!document.body || document.getElementById('ai2md-bar')) return;
+    if (!document.body) return;
+    const existing = document.getElementById('ai2md-bar');
+    const available = !AD.available || AD.available();
+    if (existing) {
+      existing.style.display = available ? 'flex' : 'none';
+      return;
+    }
+    if (!available) return;
 
     const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const fg = dark ? '#f3f3f3' : '#333';
@@ -1084,6 +1103,7 @@
   const ready = () => {
     mountButtons();
     bindBarDismiss();
+    if (AD.available) setInterval(mountButtons, 500);
     // 单页应用会整块重绘页面，按钮被冲掉时自动补回
     new MutationObserver(() => mountButtons()).observe(document.body, { childList: true, subtree: true });
   };

@@ -3,6 +3,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
+## [2.4.0] - 2026-10-26
+
+### 新增
+- Claude 登录后的普通会话页支持直接导出，无需先创建分享链接。从首页进入会话后自动显示导出入口。
+- 普通会话中的附件使用相应标注，排除输入框中尚未发送的附件；标题优先采用会话标题控件。
+
 ## [2.3.1] - 2026-10-24
 
 ### 修复
