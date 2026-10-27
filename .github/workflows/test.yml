@@ -31,3 +31,6 @@ jobs:
 
       - name: Run tests on mock pages
         run: npm test
+
+      - name: Test browser extension
+        run: npm run test:extension

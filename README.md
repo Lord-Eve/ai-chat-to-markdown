@@ -148,3 +148,7 @@ Built for archiving rather than backup: every site produces the same fixed, read
 - The UI and output labels are in Chinese. Set `USER_LABEL` in `CFG` to change your name in the output.
 - The script updates itself automatically; see the [changelog](CHANGELOG.md) and [releases](https://github.com/Lord-Eve/ai-chat-to-markdown/releases) for what changed.
 - If export breaks, open the **导出** tab and click **导出诊断数据** (Export diagnostics), then [open an issue](https://github.com/Lord-Eve/ai-chat-to-markdown/issues/new/choose) with the JSON attached. It contains the page URL and title plus selector counts and page-structure samples, but no message text.
+
+## 浏览器扩展（本地安装版）
+
+现提供无需油猴的 Chrome / Edge Manifest V3 扩展，支持工具栏导出和设置页面。运行 `npm run build:extension` 后，在扩展管理页加载 `extension/` 目录。详见 [扩展安装说明](extension/README.md)。油猴版继续保留，两种版本共用导出核心；请勿同时启用。

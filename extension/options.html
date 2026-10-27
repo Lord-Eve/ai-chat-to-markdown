@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AI Chat to Markdown 设置</title><link rel="stylesheet" href="ui.css">
+<body><main><h1>导出设置</h1><p>设置保存在当前浏览器中。保存后刷新会话页面生效。</p><form id="settings">
+<label>你的称呼<input name="USER_LABEL" type="text" maxlength="80" placeholder="User"></label>
+<label><input name="REDACT_CONTACTS" type="checkbox">遮挡疑似手机号 / QQ 号</label>
+<label><input name="AUTO_LOAD" type="checkbox">自动加载早期消息（虚拟列表仍需逐屏收集）</label>
+<label><input name="DIAG_BUTTON" type="checkbox">在网页导出菜单显示诊断入口</label>
+<label><input name="ASK_TITLE" type="checkbox">无法识别会话标题时询问标题</label>
+<label><input name="DEBUG" type="checkbox">在控制台输出调试信息</label>
+<button class="primary" type="submit" disabled>保存设置</button><p id="status" role="status"></p></form>
+<p>聊天内容在本地转换并下载，不上传到服务器。诊断数据包含页面网址和标题，分享前请检查。</p>
+</main><script src="settings.js"></script><script src="options.js"></script></body></html>

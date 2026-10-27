@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "AI Chat to Markdown",
+  "version": "2.4.0",
+  "description": "在 Claude、ChatGPT、Gemini、Grok 网页中导出逐轮 Markdown。",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "导出 AI 会话"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://grok.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
