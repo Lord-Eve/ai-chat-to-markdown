@@ -826,6 +826,11 @@
   // 所以要等边上连续 QUIET 毫秒没有变化、也没在转圈，才算到头。
   // 「没有变化」看两样：滚动区总高度，和最边上那条消息是谁。
   const QUIET = 3000;
+  const hash = (str) => {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = (h * 33 + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  };
   async function settleEdge(sc, { toTop, deadline, btn, trace, guard = () => {}, onStep = () => {} }) {
     const edge = toTop ? -1e9 : 1e9;
     const t0 = Date.now();
@@ -849,14 +854,17 @@
       onStep();
       const tagged = AD.collect();
       const m = toTop ? tagged[0] : tagged[tagged.length - 1];
-      const k = m ? (AD.key && AD.key(m.el)) || `${m.role}|${(m.el.textContent || '').slice(0, 80)}` : '';
+      const id = m && AD.key && AD.key(m.el);
+      const k = m ? id || `${m.role}|${(m.el.textContent || '').slice(0, 80)}` : '';
       const s = `${sc.scrollHeight}|${k}`;
       if (s !== sig) changedAt = Date.now();
       // 转圈太久（一分钟都没新消息）就不再信它，免得撞上一直在转的无关图标白等三分钟
       const spinning = Date.now() - changedAt < 60000 &&
         (AD.loadingMore ? AD.loadingMore(sc) : spinnerVisible(sc, tagged));
-      // [毫秒, 滚动区总高度, 滚动位置, 最边上那条消息的 key, 是否在转圈]
-      if (rows.length < 400) rows.push([Date.now() - t0, sc.scrollHeight, Math.round(sc.scrollTop), k.slice(0, 120), spinning ? 1 : 0]);
+      // [毫秒, 滚动区总高度, 滚动位置, 最边上那条消息, 是否在转圈]。
+      // 记录会进诊断文件，没有消息 ID 的只记角色和文字的哈希，不记正文
+      const who = !m ? '' : id ? id.slice(0, 120) : `${m.role}#${hash(k)}`;
+      if (rows.length < 400) rows.push([Date.now() - t0, sc.scrollHeight, Math.round(sc.scrollTop), who, spinning ? 1 : 0]);
       if (s !== sig || spinning) { sig = s; quietSince = Date.now(); }
       else if (Date.now() - quietSince >= QUIET) break;
       if (btn) btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;

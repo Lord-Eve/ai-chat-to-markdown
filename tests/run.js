@@ -300,6 +300,15 @@ const CASES = [
         assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
       });
     },
+    async after(page) {
+      // Gemini 消息没有 ID：诊断里的导出记录不能带上消息正文
+      await openExportMenu(page);
+      const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#ai2md-diag').click()]);
+      const text = fs.readFileSync(await dl.path(), 'utf8');
+      const dump = JSON.parse(text);
+      assert.ok(dump.lastExport.passes[0].rows.length > 0, '诊断里有导出记录');
+      assert.doesNotMatch(text, /Question \d|Answer \d/, '诊断不应包含消息正文');
+    },
   },
   {
     name: 'Gemini 分享页（无 model-response）',
@@ -463,6 +472,7 @@ async function runCase(browser, c) {
     e.message += `\n----- 导出内容 -----\n${md}`;
     throw e;
   }
+  if (c.after) await c.after(page);
   await context.close();
 }
 
