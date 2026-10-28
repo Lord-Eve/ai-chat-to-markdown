@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Images Test</title>
+<style>body{margin:0}#thread{height:600px;overflow-y:auto}</style></head>
+<body>
+<!-- 登录态新界面的图片：用户上传的缩略图包在按钮里；只发图片的用户消息；
+     生成的图片在 MarkdownRoot 外面、还被 aria-hidden 包着；搜索配图和站点小图标不应下载；
+     一张图片地址打不开。图片用画布现画，不依赖外部文件。 -->
+<main><div id="thread" class="thread-scroll-container" data-app-action-timeline-scroll></div></main>
+<script>
+const png = (color, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h || w; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, c.width, c.height); return c.toDataURL('image/png'); };
+const RED = png('#e33', 64), BLUE = png('#33e', 96), GREEN = png('#3a3', 120, 80), SEARCH = png('#999', 100), ICON = png('#000', 16);
+const user = (k, inner) => '<div data-content-search-unit-key="' + k + ':0:user"><div data-user-message-bubble="true">' + inner + '</div></div>';
+const ai = (k, inner) => '<div data-content-search-unit-key="' + k + ':2:assistant"><div data-chatgpt-selection-conversation-id="images-test">' + inner + '</div></div>';
+const md = (html) => '<div class="MarkdownRoot-x" data-markdown-text-style="assistant-message">' + html + '</div>';
+document.getElementById('thread').innerHTML = [
+  ['fallback-turn-0',
+    user('fallback-turn-0', '<div class="flex flex-wrap"><button class="size-20"><img alt="已上传的图片" src="' + RED + '" width="80" height="80"></button></div><div>看这张图</div>'),
+    ai('fallback-turn-0', md('<p>这是一张红色的图。参考：</p><div class="group/search-image"><img alt="VRoid Studio" src="' + SEARCH + '"></div><p><img alt="" src="' + ICON + '" width="16" height="16"> 来源网站</p>'))],
+  ['fallback-turn-1',
+    user('fallback-turn-1', '<button class="size-20"><img alt="已上传的图片" src="' + BLUE + '"></button>'),
+    ai('fallback-turn-1', '<div class="group/generated-image-preview" aria-hidden="true"><img alt="已生成图片" src="' + GREEN + '"></div>' +
+      '<div class="hidden-lightbox"><img alt="已生成图片" src="' + GREEN + '"></div>' + md('<p>图片生成好了。</p>'))],
+  ['fallback-turn-2',
+    user('fallback-turn-2', '<button class="size-20"><img alt="已上传的图片" src="https://files.example.invalid/broken.png" width="80" height="80"></button><div>这张打不开</div>'),
+    ai('fallback-turn-2', md('<p>确实打不开。</p>'))],
+].map(([k, u, a]) => '<div data-content-search-turn-key="' + k + '">' + u + a + '</div>').join('');
+</script>
+</body></html>

@@ -15,6 +15,22 @@ const SCRIPT = fs.readFileSync(
 );
 const fixture = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 
+/* ---------- 读不压缩的 zip（脚本只写这种） ---------- */
+
+function unzip(buf) {
+  const files = {};
+  for (let p = 0; buf.readUInt32LE(p) === 0x04034b50;) {
+    const size = buf.readUInt32LE(p + 18);
+    const nameLen = buf.readUInt16LE(p + 26);
+    const extra = buf.readUInt16LE(p + 28);
+    const name = buf.slice(p + 30, p + 30 + nameLen).toString('utf8');
+    const start = p + 30 + nameLen + extra;
+    files[name] = buf.slice(start, start + size);
+    p = start + size;
+  }
+  return files;
+}
+
 /* ---------- 从导出的 Markdown 里拆出结构 ---------- */
 
 function parse(md) {
@@ -261,6 +277,56 @@ const CASES = [
     check: historyCheck,
   },
   {
+    name: 'ChatGPT 图片：上传的图和生成的图打包进 zip，搜索配图和图标不下载，打不开的图写提示',
+    url: 'https://chatgpt.com/c/images-test',
+    html: fixture('chatgpt-images.html'),
+    zip: true,
+    check(md, { title, turns }, { zip, fname }) {
+      assert.strictEqual(title, 'Images Test');
+      assert.strictEqual(turns.length, 3);
+      // 图片放在和 md 同名的 .assets 文件夹；链接里的空格转义
+      const dir = fname.replace(/\.zip$/, '.assets');
+      const link = (n) => `![图片](${dir.replace(/ /g, '%20')}/${n})`;
+      assert.strictEqual(turns[0].user, `${link('001.png')}\n\n看这张图`, '按钮里的上传图要导出，且不再标注附件');
+      assert.strictEqual(turns[0].ai, '这是一张红色的图。参考：\n\n![VRoid Studio]\n\n![图片] 来源网站', '搜索配图和小图标不下载，保持原来的文字');
+      assert.strictEqual(turns[1].user, link('002.png'), '只发图片的消息');
+      assert.strictEqual(turns[1].ai, `图片生成好了。\n\n${link('003.png')}`, '正文外、aria-hidden 里的生成图要导出，重复的只留一张');
+      assert.strictEqual(turns[2].user, '*[图片：未能下载]*\n\n这张打不开');
+      assert.match(md, /图片保存在同名的 `\.assets` 文件夹/);
+      const files = ['001.png', '002.png', '003.png'].map((n) => `${dir}/${n}`);
+      assert.deepStrictEqual(Object.keys(zip).filter((n) => !n.endsWith('.md')).sort(), files);
+      for (const n of files) assert.strictEqual(zip[n].slice(1, 4).toString('latin1'), 'PNG', `${n} 是 PNG`);
+      // 第 1、2、3 张分别是 64、96、120 像素宽
+      assert.deepStrictEqual(files.map((n) => zip[n].readUInt32BE(16)), [64, 96, 120]);
+    },
+  },
+  {
+    name: 'ChatGPT 图片：页面没有标题时，建议标题和文件名里不能混进图片占位符',
+    url: 'https://chatgpt.com/c/images-test',
+    html: fixture('chatgpt-images.html').replace('<title>Images Test</title>', '<title>ChatGPT</title>'),
+    zip: true,
+    promptAnswer: '',
+    check(md, { title }, { prompts, fname, zip }) {
+      assert.strictEqual(prompts.length, 1);
+      assert.strictEqual(prompts[0].defaultValue, '看这张图', '建议标题只取文字');
+      assert.strictEqual(title, '看这张图');
+      assert.match(fname, /-ChatGPT-看这张图\.zip$/);
+      assert.ok(Object.keys(zip).every((n) => !/[\uE000-\uF8FF]/.test(n)), 'zip 里的文件名不含占位符');
+    },
+  },
+  {
+    name: 'ChatGPT 图片：选「不带图片」时和以前一样只导出 md，图片位置标注附件',
+    url: 'https://chatgpt.com/c/images-test',
+    html: fixture('chatgpt-images.html'),
+    button: '#ai2md-export-text',
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 3);
+      assert.strictEqual(turns[0].user, '> *[附件：图片或文件，未随文本导出]*\n\n看这张图');
+      assert.strictEqual(turns[1].user, '> *[附件：图片或文件，未随文本导出]*');
+      assert.doesNotMatch(md, /\.assets|未能下载|图片保存在/, '不带图片时不应出现图片链接或图片说明');
+    },
+  },
+  {
     name: 'ChatGPT 导出途中切换会话：应取消，不能把两个会话拼在一起',
     url: 'https://chatgpt.com/c/app-shell-test',
     html: fixture('chatgpt-app-shell.html'),
@@ -363,7 +429,7 @@ const CASES = [
 
 /* ---------- 运行 ---------- */
 
-// 点开右侧贴边标签。诊断在点开之前不可见，并且排在导出会话的下一行。
+// 点开右侧贴边标签。诊断在点开之前不可见，排在两个导出按钮下面。
 async function openExportMenu(page) {
   const tab = page.locator('#ai2md-tab');
   await tab.waitFor();
@@ -387,8 +453,9 @@ async function openExportMenu(page) {
   await page.locator('#ai2md-export').waitFor({ state: 'visible' });
   assert.strictEqual(await diag.isVisible(), true, '点开标签之后，诊断出现在菜单里');
   const labels = await page.locator('#ai2md-panel button').allTextContents();
-  assert.match(labels[0], /^导出 .+ 会话$/, '第一行是导出会话');
-  assert.strictEqual(labels[1], '导出诊断数据', '第二行是诊断');
+  assert.match(labels[0], /^导出 .+ 会话（带图片）$/, '第一行是带图片导出');
+  assert.match(labels[1], /^导出 .+ 会话（不带图片）$/, '第二行是不带图片导出');
+  assert.strictEqual(labels[2], '导出诊断数据', '第三行是诊断');
 }
 
 async function runCase(browser, c) {
@@ -423,7 +490,7 @@ async function runCase(browser, c) {
   await page.addScriptTag({ content: SCRIPT });
   if (c.afterInject) await c.afterInject(page);
 
-  const exportBtn = page.locator('#ai2md-export');
+  const exportBtn = page.locator(c.button || '#ai2md-export');
   await openExportMenu(page);
 
   if (c.diag) {
@@ -463,11 +530,21 @@ async function runCase(browser, c) {
       exportBtn.click(),
     ]);
   }
-  const md = fs.readFileSync(await dl.path(), 'utf8');
   const fname = await page.evaluate(() => window.__dlName);
-  assert.match(fname, /^\d{4}-\d{2}-\d{2}-(Claude|ChatGPT|Gemini|Grok)-.+\.md$/, '文件名格式');
+  assert.match(fname, /^\d{4}-\d{2}-\d{2}-(Claude|ChatGPT|Gemini|Grok)-.+\.(md|zip)$/, '文件名格式');
+  let md;
+  let zip = null;
+  if (fname.endsWith('.zip')) {
+    zip = unzip(fs.readFileSync(await dl.path()));
+    const mdName = Object.keys(zip).find((n) => n.endsWith('.md'));
+    assert.strictEqual(mdName, fname.replace(/\.zip$/, '.md'), 'zip 里的 md 和 zip 同名');
+    md = zip[mdName].toString('utf8');
+  } else {
+    md = fs.readFileSync(await dl.path(), 'utf8');
+  }
+  assert.strictEqual(!!zip, !!c.zip, c.zip ? '有图片时应下载 zip' : '没有图片时应下载 md');
   try {
-    c.check(md, parse(md), { prompts, fname });
+    c.check(md, parse(md), { prompts, fname, zip });
   } catch (e) {
     e.message += `\n----- 导出内容 -----\n${md}`;
     throw e;
