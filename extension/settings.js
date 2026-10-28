@@ -1,7 +1,7 @@
 'use strict';
 // Shared by the settings page and generated content script. Ignore unknown keys.
 const SETTINGS_DEFAULTS = {
-  USER_LABEL: 'User', REDACT_CONTACTS: false, AUTO_LOAD: true,
+  USER_LABEL: 'User', REDACT_CONTACTS: false, AUTO_LOAD: true, EXPORT_IMAGES: true,
   DIAG_BUTTON: true, ASK_TITLE: true, DEBUG: false,
 };
 function normalizeSettings(value) {

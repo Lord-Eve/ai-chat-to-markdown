@@ -32,6 +32,8 @@
     REDACT_CONTACTS: false,
     // 导出前自动滚动，把懒加载的早期消息加载出来
     AUTO_LOAD: true,
+    // 一起导出用户上传的图片和模型生成的图片（有图片时下载 zip：md + images/ 文件夹）；联网搜索的配图不下载
+    EXPORT_IMAGES: true,
     // 在右侧「导出」菜单的第二行显示「导出诊断数据」（页面改版导致导出失败时，用它生成排错用的 JSON）
     DIAG_BUTTON: true,
     // 页面上取不到会话标题时（比如 Claude 分享页），导出前弹窗确认标题；关掉则直接用第一条用户消息
@@ -61,8 +63,8 @@
       .slice(0, 80);
   }
 
-  function download(filename, text) {
-    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+  function download(filename, data) {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -653,18 +655,21 @@
   function renderMessage(el, role) {
     const base = AD.content(el, role) || el;
     const clone = base.cloneNode(true);
+    markImages(el, clone, role);
     AD.clean(clone);
-    // 附件卡片（文件名、缩略图）不进正文，由 attachmentNote 统一标注
-    clone.querySelectorAll(FILE_SEL).forEach((n) => n.remove());
+    // 附件卡片（文件名、缩略图）不进正文，由 attachmentNote 统一标注；卡片里要导出的图片留下
+    clone.querySelectorAll(FILE_SEL).forEach(dropKeepingImages);
 
-    // 按钮、图标、读屏隐藏的短文本一律去掉（公式的 MathML 源码除外）
+    // 按钮、图标、读屏隐藏的短文本一律去掉（公式的 MathML 源码除外）。
+    // 图片常包在按钮里（点开看大图），要导出的图片留下
     clone.querySelectorAll('button, svg, [role="button"], [aria-hidden="true"]').forEach((n) => {
-      if (n.closest('.katex-mathml')) return;
+      if (n.closest('.katex-mathml') || !n.isConnected) return;
       const t = n.textContent.trim();
-      if (!t || t.length < 40) n.remove();
+      if (!t || t.length < 40) dropKeepingImages(n);
     });
 
-    const md = nodeToMarkdown(clone);
+    // 图片单独成段
+    const md = nodeToMarkdown(clone).replace(/[ \t]*(\uE000\d+\uE001)[ \t]*/g, '\n\n$1\n\n');
     const out = [];
     const tools = [];
 
@@ -687,13 +692,211 @@
 
   function attachmentNote(el, role) {
     if (role !== 'user') return null;
-    const hasFile = !!el.querySelector(FILE_SEL);
+    // 只有要导出的图片的附件卡片不再标注；文件和没导出的图片照旧标注
+    const hasFile = Array.from(el.querySelectorAll(FILE_SEL))
+      .some((f) => !Array.from(f.querySelectorAll('img')).some((i) => !imageSkip(i, role)));
     const imgs = Array.from(el.querySelectorAll('img'))
-      .filter((i) => !/avatar|头像|profile/i.test(attr(i, 'alt') + ' ' + cls(i)));
+      .filter((i) => !/avatar|头像|profile/i.test(attr(i, 'alt') + ' ' + cls(i)) && imageSkip(i, role));
     if (hasFile || imgs.length || /files hidden when shared|共享时会隐藏文件/i.test(el.textContent)) {
       return `> *[附件：${AD.attachNote}]*`;
     }
     return null;
+  }
+
+  /* ===================== 图片 ===================== */
+  // 用户上传的图和模型生成的图一起导出。收集时就开始下载（虚拟列表滚走后 blob: 地址可能失效），
+  // 正文里先放占位符，导出时换成 images/ 下的相对路径，和 md 一起打成 zip。
+  // 联网搜索的配图、头像、图标不下载，保持原来的 ![标题] 文字。
+
+  const IMG_MARK = (id) => `\uE000${id}\uE001`;
+  const IMG_MARK_RE = /\uE000(\d+)\uE001/g;
+  const SKIP_IMG_SEL = '[class*="search-image"], [class*="favicon" i], [class*="avatar" i], [data-citation], [class*="citation" i]';
+  let images = new Map(); // img.src -> { id, src, job, blob, error }
+  let lastImages = null;
+
+  // 不导出时返回原因（诊断里用），导出返回 null
+  function imageSkip(img, role) {
+    if (!CFG.EXPORT_IMAGES) return 'off';
+    const src = img.currentSrc || img.src || '';
+    if (!/^(https?:|blob:|data:image\/)/.test(src)) return 'src';
+    if (/avatar|头像|profile|icon|logo|favicon/i.test(attr(img, 'alt') + ' ' + cls(img))) return 'icon';
+    if (img.closest(SKIP_IMG_SEL)) return 'search';
+    const r = img.getBoundingClientRect();
+    const w = Math.max(img.naturalWidth || 0, r.width);
+    const h = Math.max(img.naturalHeight || 0, r.height);
+    // 小图标按尺寸排除；没加载出来的图（地址失效）尺寸不可信，照样当图片处理，下载失败时写提示
+    if (img.complete && img.naturalWidth > 0 && (w < 48 || h < 48)) return 'small';
+    // AI 回复里点了会跳到别的网站的图，是搜索结果卡片
+    if (role !== 'user') {
+      const a = img.closest('a[href]');
+      try { if (a && new URL(a.href, location.href).host !== location.host) return 'link'; } catch (e) { /* 坏链接当站内 */ }
+    }
+    return null;
+  }
+
+  function registerImage(img) {
+    let rec = images.get(img.src);
+    if (!rec) {
+      rec = { id: images.size + 1, src: img.currentSrc || img.src };
+      rec.job = fetchImage(rec.src, img).then((b) => { rec.blob = b; }, (e) => { rec.error = String((e && e.message) || e).slice(0, 80); });
+      images.set(img.src, rec);
+    }
+    return rec.id;
+  }
+
+  async function fetchImage(src, img) {
+    const isImg = (b) => b && b.size > 0 && (!b.type || /^image\//.test(b.type) || b.type === 'application/octet-stream');
+    // 带登录信息的跨域请求遇到 Access-Control-Allow-Origin: * 会被拒，再不带试一次
+    const tries = /^(blob|data):/.test(src) ? [{}] : [{ credentials: 'include' }, { credentials: 'omit' }];
+    let last = 'fetch';
+    for (const opt of tries) {
+      try {
+        const r = await fetch(src, opt);
+        if (!r.ok) { last = `HTTP ${r.status}`; continue; }
+        const b = await r.blob();
+        if (isImg(b)) return b;
+        last = `type ${b.type}`;
+      } catch (e) { last = e.name || 'fetch'; }
+    }
+    // 读不到原文件时，从页面上已经显示出来的图里取（对方网站不允许时浏览器会拒绝）
+    if (img && img.isConnected && img.complete && img.naturalWidth) {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        const b = await new Promise((res) => c.toBlob(res, 'image/png'));
+        if (b) return b;
+      } catch (e) { last += ` / canvas ${e.name}`; }
+    }
+    throw new Error(last);
+  }
+
+  // 把 clone 里要导出的图片换成占位符。el 是页面上的原消息：图片大小、加载状态只能在它上面看；
+  // 有的平台只取了消息的正文部分，正文外的图（比如生成的图片）补到末尾
+  function markImages(el, clone, role) {
+    const keep = new Map();
+    for (const img of el.querySelectorAll('img')) {
+      if (!keep.has(img.src) && !imageSkip(img, role)) keep.set(img.src, img);
+    }
+    if (!keep.size) return;
+    const inClone = new Set(Array.from(clone.querySelectorAll('img')).map((i) => i.src));
+    for (const [src, img] of keep) if (!inClone.has(src)) clone.appendChild(img.cloneNode());
+    const used = new Set();
+    for (const img of clone.querySelectorAll('img')) {
+      if (!keep.has(img.src)) continue;
+      const id = registerImage(keep.get(img.src));
+      // 缩略图和大图常是同一张，只留第一处
+      if (used.has(id)) { img.remove(); continue; }
+      used.add(id);
+      const mark = document.createElement('span');
+      mark.setAttribute('data-ai2md-img', '');
+      mark.textContent = IMG_MARK(id);
+      img.replaceWith(mark);
+    }
+  }
+
+  function dropKeepingImages(n) {
+    const marks = n.querySelectorAll('[data-ai2md-img]');
+    if (marks.length) n.replaceWith(...marks);
+    else n.remove();
+  }
+
+  // 只有附件、没有正文的一行（Claude）：只取图片
+  function imageMarks(el, role) {
+    const ids = [...new Set(Array.from(el.querySelectorAll('img')).filter((i) => !imageSkip(i, role)).map(registerImage))];
+    return ids.map(IMG_MARK).join('\n\n');
+  }
+
+  // 等图片下载完，把占位符换成 images/ 下的相对路径；下载失败的写成提示
+  async function resolveImages(text, btn) {
+    const ids = [...new Set([...text.matchAll(IMG_MARK_RE)].map((m) => Number(m[1])))];
+    lastImages = [];
+    if (!ids.length) return { text, files: [] };
+    const byId = new Map([...images.values()].map((r) => [r.id, r]));
+    let done = 0;
+    await Promise.all(ids.map((id) => Promise.race([byId.get(id).job, sleep(60000)]).then(() => {
+      btn.textContent = `⏳ 下载图片 ${++done}/${ids.length}…`;
+    })));
+    const files = [];
+    const names = new Map();
+    for (const id of ids) {
+      const r = byId.get(id);
+      let host = '';
+      try { host = /^(blob|data):/.test(r.src) ? r.src.split(':')[0] : new URL(r.src).host; } catch (e) { host = '?'; }
+      lastImages.push({ host, ok: !!r.blob, type: r.blob ? r.blob.type : '', bytes: r.blob ? r.blob.size : 0, error: r.blob ? '' : r.error || 'timeout' });
+      if (!r.blob) continue;
+      const ext = (r.blob.type.match(/^image\/(png|jpeg|gif|webp|svg\+xml|avif|bmp)/) || [])[1] || 'png';
+      const name = `images/${String(files.length + 1).padStart(3, '0')}.${ext.replace('jpeg', 'jpg').replace('svg+xml', 'svg')}`;
+      files.push({ name, data: r.blob });
+      names.set(id, name);
+    }
+    const out = text.replace(IMG_MARK_RE, (_, id) => (names.has(Number(id)) ? `![图片](${names.get(Number(id))})` : '*[图片：未能下载]*'));
+    return { text: out, files };
+  }
+
+  // 最简单的 zip（不压缩，图片本来就是压缩过的）。文件名按 UTF-8 存
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  const crc32 = (u8) => {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  };
+
+  async function makeZip(files) {
+    const enc = new TextEncoder();
+    const d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name);
+      const data = typeof f.data === 'string' ? enc.encode(f.data) : new Uint8Array(await f.data.arrayBuffer());
+      const crc = crc32(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true); // 文件名是 UTF-8
+      local.setUint16(10, time, true);
+      local.setUint16(12, date, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, name.length, true);
+      parts.push(local, name, data);
+      const entry = new DataView(new ArrayBuffer(46));
+      entry.setUint32(0, 0x02014b50, true);
+      entry.setUint16(4, 20, true);
+      entry.setUint16(6, 20, true);
+      entry.setUint16(8, 0x0800, true);
+      entry.setUint16(12, time, true);
+      entry.setUint16(14, date, true);
+      entry.setUint32(16, crc, true);
+      entry.setUint32(20, data.length, true);
+      entry.setUint32(24, data.length, true);
+      entry.setUint16(28, name.length, true);
+      entry.setUint32(42, offset, true);
+      central.push(entry, name);
+      offset += 30 + name.length + data.length;
+    }
+    const size = central.reduce((n, p) => n + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true);
+    end.setUint32(12, size, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, end], { type: 'application/zip' });
   }
 
   /* ===================== 组装 Markdown ===================== */
@@ -702,7 +905,10 @@
   function toItems(tagged) {
     const fileNote = `> *[附件：${AD.attachNote}]*`;
     return tagged.map((m) => m.attachOnly
-      ? { role: 'user', md: '', note: fileNote }
+      ? (() => {
+        const md = imageMarks(m.el, 'user');
+        return { role: 'user', md, note: md ? null : fileNote };
+      })()
       : (() => {
         const md = renderMessage(m.el, m.role);
         const note = attachmentNote(m.el, m.role) || (m.attach ? fileNote : null);
@@ -777,7 +983,9 @@
       '## 备注',
       '',
       `- 本文件由油猴脚本 AI Chat to Markdown 从 ${AD.name} 页面导出。`,
-      '- 附件内容不随文本导出，原位置以 `[附件：…]` 标注。',
+      /\uE000\d+\uE001/.test(parts.join('\n'))
+        ? '- 用户上传和模型生成的图片保存在 `images/` 文件夹，正文按原位置引用；下载失败的以 `[图片：未能下载]` 标注。其他附件不随文本导出，原位置以 `[附件：…]` 标注。'
+        : '- 附件内容不随文本导出，原位置以 `[附件：…]` 标注。',
       '- 界面提示行已剔除，工具调用与思考过程压缩为斜体小注；公式保留为 TeX。',
       ''
     );
@@ -1013,6 +1221,7 @@
     btn.textContent = '⏳ 加载完整会话…';
     btn.disabled = true;
     exporting = true;
+    images = new Map();
     try {
       let items;
       if (AD.virtualized) {
@@ -1036,7 +1245,10 @@
         return;
       }
       const { title, date, text } = build(items, resolveTitle(items));
-      download(`${date}-${AD.name}-${sanitizeFilename(title)}.md`, text);
+      const name = `${date}-${AD.name}-${sanitizeFilename(title)}`;
+      const out = await resolveImages(text, btn);
+      if (out.files.length) download(`${name}.zip`, await makeZip([{ name: `${name}.md`, data: out.text }, ...out.files]));
+      else download(`${name}.md`, out.text);
     } catch (e) {
       if (e.userFacing) { alert(e.message); return; }
       console.error('[导出] 出错', e);
@@ -1073,6 +1285,26 @@
     };
   }
 
+  // 消息里的图片：只记来源域名、尺寸、所在位置和导不导出，不记地址和内容
+  function imageInfo(tagged) {
+    return tagged.flatMap((m) => Array.from(m.el.querySelectorAll('img')).map((img) => {
+      const src = img.currentSrc || img.src || '';
+      let host = src.split(':')[0];
+      try { if (/^https?:/.test(src)) host = new URL(src).host; } catch (e) { /* 留协议名 */ }
+      const r = img.getBoundingClientRect();
+      return {
+        role: m.role,
+        host,
+        natural: `${img.naturalWidth}x${img.naturalHeight}`,
+        shown: `${Math.round(r.width)}x${Math.round(r.height)}`,
+        inButton: !!img.closest('button, [role="button"]'),
+        inFileCard: !!img.closest(FILE_SEL),
+        skip: imageSkip(img, m.role),
+        wrap: Array.from(img.closest('div, figure, button, a')?.classList || []).slice(0, 6).join(' '),
+      };
+    })).slice(0, 40);
+  }
+
   function doDebugDump() {
     const tagged = AD.collect();
     // 只在会话区域里取样；侧边栏元素多，整页取样会被它占满
@@ -1103,6 +1335,8 @@
       areaTextLength: (area.innerText || area.textContent || '').length,
       scroll: scrollInfo(tagged),
       lastExport: lastHarvest,
+      images: imageInfo(tagged),
+      lastImages,
     };
     console.log('[导出] 诊断数据', dump);
     download(`${AD.id}-debug-${todayStr()}.json`, JSON.stringify(dump, null, 2));

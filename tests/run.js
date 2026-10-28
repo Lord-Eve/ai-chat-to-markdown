@@ -15,6 +15,22 @@ const SCRIPT = fs.readFileSync(
 );
 const fixture = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 
+/* ---------- 读不压缩的 zip（脚本只写这种） ---------- */
+
+function unzip(buf) {
+  const files = {};
+  for (let p = 0; buf.readUInt32LE(p) === 0x04034b50;) {
+    const size = buf.readUInt32LE(p + 18);
+    const nameLen = buf.readUInt16LE(p + 26);
+    const extra = buf.readUInt16LE(p + 28);
+    const name = buf.slice(p + 30, p + 30 + nameLen).toString('utf8');
+    const start = p + 30 + nameLen + extra;
+    files[name] = buf.slice(start, start + size);
+    p = start + size;
+  }
+  return files;
+}
+
 /* ---------- 从导出的 Markdown 里拆出结构 ---------- */
 
 function parse(md) {
@@ -261,6 +277,28 @@ const CASES = [
     check: historyCheck,
   },
   {
+    name: 'ChatGPT 图片：上传的图和生成的图打包进 zip，搜索配图和图标不下载，打不开的图写提示',
+    url: 'https://chatgpt.com/c/images-test',
+    html: fixture('chatgpt-images.html'),
+    zip: true,
+    check(md, { title, turns }, { zip }) {
+      assert.strictEqual(title, 'Images Test');
+      assert.strictEqual(turns.length, 3);
+      assert.strictEqual(turns[0].user, '![图片](images/001.png)\n\n看这张图', '按钮里的上传图要导出，且不再标注附件');
+      assert.strictEqual(turns[0].ai, '这是一张红色的图。参考：\n\n![VRoid Studio]\n\n![图片] 来源网站', '搜索配图和小图标不下载，保持原来的文字');
+      assert.strictEqual(turns[1].user, '![图片](images/002.png)', '只发图片的消息');
+      assert.strictEqual(turns[1].ai, '图片生成好了。\n\n![图片](images/003.png)', '正文外、aria-hidden 里的生成图要导出，重复的只留一张');
+      assert.strictEqual(turns[2].user, '*[图片：未能下载]*\n\n这张打不开');
+      assert.match(md, /图片保存在 `images\/` 文件夹/);
+      assert.deepStrictEqual(Object.keys(zip).filter((n) => n.startsWith('images/')).sort(), ['images/001.png', 'images/002.png', 'images/003.png']);
+      for (const n of ['images/001.png', 'images/002.png', 'images/003.png']) {
+        assert.strictEqual(zip[n].slice(1, 4).toString('latin1'), 'PNG', `${n} 是 PNG`);
+      }
+      // 第 1、2、3 张分别是 64、96、120 像素宽
+      assert.deepStrictEqual(['images/001.png', 'images/002.png', 'images/003.png'].map((n) => zip[n].readUInt32BE(16)), [64, 96, 120]);
+    },
+  },
+  {
     name: 'ChatGPT 导出途中切换会话：应取消，不能把两个会话拼在一起',
     url: 'https://chatgpt.com/c/app-shell-test',
     html: fixture('chatgpt-app-shell.html'),
@@ -463,11 +501,21 @@ async function runCase(browser, c) {
       exportBtn.click(),
     ]);
   }
-  const md = fs.readFileSync(await dl.path(), 'utf8');
   const fname = await page.evaluate(() => window.__dlName);
-  assert.match(fname, /^\d{4}-\d{2}-\d{2}-(Claude|ChatGPT|Gemini|Grok)-.+\.md$/, '文件名格式');
+  assert.match(fname, /^\d{4}-\d{2}-\d{2}-(Claude|ChatGPT|Gemini|Grok)-.+\.(md|zip)$/, '文件名格式');
+  let md;
+  let zip = null;
+  if (fname.endsWith('.zip')) {
+    zip = unzip(fs.readFileSync(await dl.path()));
+    const mdName = Object.keys(zip).find((n) => n.endsWith('.md'));
+    assert.strictEqual(mdName, fname.replace(/\.zip$/, '.md'), 'zip 里的 md 和 zip 同名');
+    md = zip[mdName].toString('utf8');
+  } else {
+    md = fs.readFileSync(await dl.path(), 'utf8');
+  }
+  assert.strictEqual(!!zip, !!c.zip, c.zip ? '有图片时应下载 zip' : '没有图片时应下载 md');
   try {
-    c.check(md, parse(md), { prompts, fname });
+    c.check(md, parse(md), { prompts, fname, zip });
   } catch (e) {
     e.message += `\n----- 导出内容 -----\n${md}`;
     throw e;
