@@ -32,8 +32,6 @@
     REDACT_CONTACTS: false,
     // 导出前自动滚动，把懒加载的早期消息加载出来
     AUTO_LOAD: true,
-    // 一起导出用户上传的图片和模型生成的图片（有图片时下载 zip：md + images/ 文件夹）；联网搜索的配图不下载
-    EXPORT_IMAGES: true,
     // 在右侧「导出」菜单的第二行显示「导出诊断数据」（页面改版导致导出失败时，用它生成排错用的 JSON）
     DIAG_BUTTON: true,
     // 页面上取不到会话标题时（比如 Claude 分享页），导出前弹窗确认标题；关掉则直接用第一条用户消息
@@ -663,7 +661,8 @@
     // 按钮、图标、读屏隐藏的短文本一律去掉（公式的 MathML 源码除外）。
     // 图片常包在按钮里（点开看大图），要导出的图片留下
     clone.querySelectorAll('button, svg, [role="button"], [aria-hidden="true"]').forEach((n) => {
-      if (n.closest('.katex-mathml') || !n.isConnected) return;
+      // 外层已经删掉的跳过（clone 不在页面上，不能用 isConnected 判断）
+      if (n.closest('.katex-mathml') || !clone.contains(n)) return;
       const t = n.textContent.trim();
       if (!t || t.length < 40) dropKeepingImages(n);
     });
@@ -704,8 +703,8 @@
   }
 
   /* ===================== 图片 ===================== */
-  // 用户上传的图和模型生成的图一起导出。收集时就开始下载（虚拟列表滚走后 blob: 地址可能失效），
-  // 正文里先放占位符，导出时换成 images/ 下的相对路径，和 md 一起打成 zip。
+  // 「带图片」导出时，用户上传的图和模型生成的图一起导出。收集时就开始下载（虚拟列表滚走后 blob: 地址可能失效），
+  // 正文里先放占位符，导出时换成「文档名.assets/」下的相对路径（和 Typora、Croquill 的习惯一致），和 md 一起打成 zip。
   // 联网搜索的配图、头像、图标不下载，保持原来的 ![标题] 文字。
 
   const IMG_MARK = (id) => `\uE000${id}\uE001`;
@@ -713,10 +712,11 @@
   const SKIP_IMG_SEL = '[class*="search-image"], [class*="favicon" i], [class*="avatar" i], [data-citation], [class*="citation" i]';
   let images = new Map(); // img.src -> { id, src, job, blob, error }
   let lastImages = null;
+  let imagesOn = false; // 这次导出带不带图片
 
   // 不导出时返回原因（诊断里用），导出返回 null
-  function imageSkip(img, role) {
-    if (!CFG.EXPORT_IMAGES) return 'off';
+  function imageSkip(img, role, on = imagesOn) {
+    if (!on) return 'off';
     const src = img.currentSrc || img.src || '';
     if (!/^(https?:|blob:|data:image\/)/.test(src)) return 'src';
     if (/avatar|头像|profile|icon|logo|favicon/i.test(attr(img, 'alt') + ' ' + cls(img))) return 'icon';
@@ -808,8 +808,11 @@
     return ids.map(IMG_MARK).join('\n\n');
   }
 
-  // 等图片下载完，把占位符换成 images/ 下的相对路径；下载失败的写成提示
-  async function resolveImages(text, btn) {
+  // 链接里的文件夹名：空格、括号、# 和 % 要转义，中文保留
+  const linkPath = (s) => s.replace(/[\s%#()<>[\]?]/g, encodeURIComponent);
+
+  // 等图片下载完，把占位符换成「文档名.assets/」下的相对路径；下载失败的写成提示
+  async function resolveImages(text, btn, docName) {
     const ids = [...new Set([...text.matchAll(IMG_MARK_RE)].map((m) => Number(m[1])))];
     lastImages = [];
     if (!ids.length) return { text, files: [] };
@@ -827,9 +830,9 @@
       lastImages.push({ host, ok: !!r.blob, type: r.blob ? r.blob.type : '', bytes: r.blob ? r.blob.size : 0, error: r.blob ? '' : r.error || 'timeout' });
       if (!r.blob) continue;
       const ext = (r.blob.type.match(/^image\/(png|jpeg|gif|webp|svg\+xml|avif|bmp)/) || [])[1] || 'png';
-      const name = `images/${String(files.length + 1).padStart(3, '0')}.${ext.replace('jpeg', 'jpg').replace('svg+xml', 'svg')}`;
-      files.push({ name, data: r.blob });
-      names.set(id, name);
+      const file = `${String(files.length + 1).padStart(3, '0')}.${ext.replace('jpeg', 'jpg').replace('svg+xml', 'svg')}`;
+      files.push({ name: `${docName}.assets/${file}`, data: r.blob });
+      names.set(id, `${linkPath(docName)}.assets/${file}`);
     }
     const out = text.replace(IMG_MARK_RE, (_, id) => (names.has(Number(id)) ? `![图片](${names.get(Number(id))})` : '*[图片：未能下载]*'));
     return { text: out, files };
@@ -984,7 +987,7 @@
       '',
       `- 本文件由油猴脚本 AI Chat to Markdown 从 ${AD.name} 页面导出。`,
       /\uE000\d+\uE001/.test(parts.join('\n'))
-        ? '- 用户上传和模型生成的图片保存在 `images/` 文件夹，正文按原位置引用；下载失败的以 `[图片：未能下载]` 标注。其他附件不随文本导出，原位置以 `[附件：…]` 标注。'
+        ? '- 用户上传和模型生成的图片保存在同名的 `.assets` 文件夹，正文按原位置引用；下载失败的以 `[图片：未能下载]` 标注。其他附件不随文本导出，原位置以 `[附件：…]` 标注。'
         : '- 附件内容不随文本导出，原位置以 `[附件：…]` 标注。',
       '- 界面提示行已剔除，工具调用与思考过程压缩为斜体小注；公式保留为 TeX。',
       ''
@@ -1215,12 +1218,17 @@
     if (tab) tab.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
-  async function doExport(btn) {
+  // withImages：「带图片」导出。会话里没有图片时，和「不带图片」一样只下载 md
+  async function doExport(btn, withImages = true) {
+    if (exporting) return;
     const startUrl = location.href;
     const label = btn.textContent;
+    const others = Array.from(document.querySelectorAll('[data-ai2md-export]')).filter((b) => b !== btn);
     btn.textContent = '⏳ 加载完整会话…';
     btn.disabled = true;
+    others.forEach((b) => { b.disabled = true; });
     exporting = true;
+    imagesOn = withImages;
     images = new Map();
     try {
       let items;
@@ -1246,7 +1254,7 @@
       }
       const { title, date, text } = build(items, resolveTitle(items));
       const name = `${date}-${AD.name}-${sanitizeFilename(title)}`;
-      const out = await resolveImages(text, btn);
+      const out = await resolveImages(text, btn, name);
       if (out.files.length) download(`${name}.zip`, await makeZip([{ name: `${name}.md`, data: out.text }, ...out.files]));
       else download(`${name}.md`, out.text);
     } catch (e) {
@@ -1255,8 +1263,10 @@
       alert('导出出错：' + e.message + '\n控制台（F12）里有详细信息，欢迎截图提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues');
     } finally {
       exporting = false;
+      imagesOn = false;
       btn.textContent = label;
       btn.disabled = false;
+      others.forEach((b) => { b.disabled = false; });
       setPanelOpen(false);
     }
   }
@@ -1299,7 +1309,7 @@
         shown: `${Math.round(r.width)}x${Math.round(r.height)}`,
         inButton: !!img.closest('button, [role="button"]'),
         inFileCard: !!img.closest(FILE_SEL),
-        skip: imageSkip(img, m.role),
+        skip: imageSkip(img, m.role, true),
         wrap: Array.from(img.closest('div, figure, button, a')?.classList || []).slice(0, 6).join(' '),
       };
     })).slice(0, 40);
@@ -1406,9 +1416,14 @@
       return b;
     };
 
-    const exportBtn = mk(`导出 ${AD.name} 会话`, doExport, true);
+    const exportBtn = mk(`导出 ${AD.name} 会话（带图片）`, (b) => doExport(b, true), true);
     exportBtn.id = 'ai2md-export';
+    exportBtn.setAttribute('data-ai2md-export', '');
     panel.appendChild(exportBtn);
+    const textBtn = mk(`导出 ${AD.name} 会话（不带图片）`, (b) => doExport(b, false), false);
+    textBtn.id = 'ai2md-export-text';
+    textBtn.setAttribute('data-ai2md-export', '');
+    panel.appendChild(textBtn);
     if (CFG.DIAG_BUTTON) {
       const diagBtn = mk('导出诊断数据', doDebugDump, false);
       diagBtn.id = 'ai2md-diag';

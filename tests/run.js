@@ -281,21 +281,35 @@ const CASES = [
     url: 'https://chatgpt.com/c/images-test',
     html: fixture('chatgpt-images.html'),
     zip: true,
-    check(md, { title, turns }, { zip }) {
+    check(md, { title, turns }, { zip, fname }) {
       assert.strictEqual(title, 'Images Test');
       assert.strictEqual(turns.length, 3);
-      assert.strictEqual(turns[0].user, '![图片](images/001.png)\n\n看这张图', '按钮里的上传图要导出，且不再标注附件');
+      // 图片放在和 md 同名的 .assets 文件夹；链接里的空格转义
+      const dir = fname.replace(/\.zip$/, '.assets');
+      const link = (n) => `![图片](${dir.replace(/ /g, '%20')}/${n})`;
+      assert.strictEqual(turns[0].user, `${link('001.png')}\n\n看这张图`, '按钮里的上传图要导出，且不再标注附件');
       assert.strictEqual(turns[0].ai, '这是一张红色的图。参考：\n\n![VRoid Studio]\n\n![图片] 来源网站', '搜索配图和小图标不下载，保持原来的文字');
-      assert.strictEqual(turns[1].user, '![图片](images/002.png)', '只发图片的消息');
-      assert.strictEqual(turns[1].ai, '图片生成好了。\n\n![图片](images/003.png)', '正文外、aria-hidden 里的生成图要导出，重复的只留一张');
+      assert.strictEqual(turns[1].user, link('002.png'), '只发图片的消息');
+      assert.strictEqual(turns[1].ai, `图片生成好了。\n\n${link('003.png')}`, '正文外、aria-hidden 里的生成图要导出，重复的只留一张');
       assert.strictEqual(turns[2].user, '*[图片：未能下载]*\n\n这张打不开');
-      assert.match(md, /图片保存在 `images\/` 文件夹/);
-      assert.deepStrictEqual(Object.keys(zip).filter((n) => n.startsWith('images/')).sort(), ['images/001.png', 'images/002.png', 'images/003.png']);
-      for (const n of ['images/001.png', 'images/002.png', 'images/003.png']) {
-        assert.strictEqual(zip[n].slice(1, 4).toString('latin1'), 'PNG', `${n} 是 PNG`);
-      }
+      assert.match(md, /图片保存在同名的 `\.assets` 文件夹/);
+      const files = ['001.png', '002.png', '003.png'].map((n) => `${dir}/${n}`);
+      assert.deepStrictEqual(Object.keys(zip).filter((n) => !n.endsWith('.md')).sort(), files);
+      for (const n of files) assert.strictEqual(zip[n].slice(1, 4).toString('latin1'), 'PNG', `${n} 是 PNG`);
       // 第 1、2、3 张分别是 64、96、120 像素宽
-      assert.deepStrictEqual(['images/001.png', 'images/002.png', 'images/003.png'].map((n) => zip[n].readUInt32BE(16)), [64, 96, 120]);
+      assert.deepStrictEqual(files.map((n) => zip[n].readUInt32BE(16)), [64, 96, 120]);
+    },
+  },
+  {
+    name: 'ChatGPT 图片：选「不带图片」时和以前一样只导出 md，图片位置标注附件',
+    url: 'https://chatgpt.com/c/images-test',
+    html: fixture('chatgpt-images.html'),
+    button: '#ai2md-export-text',
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 3);
+      assert.strictEqual(turns[0].user, '> *[附件：图片或文件，未随文本导出]*\n\n看这张图');
+      assert.strictEqual(turns[1].user, '> *[附件：图片或文件，未随文本导出]*');
+      assert.doesNotMatch(md, /\.assets|未能下载|图片保存在/, '不带图片时不应出现图片链接或图片说明');
     },
   },
   {
@@ -401,7 +415,7 @@ const CASES = [
 
 /* ---------- 运行 ---------- */
 
-// 点开右侧贴边标签。诊断在点开之前不可见，并且排在导出会话的下一行。
+// 点开右侧贴边标签。诊断在点开之前不可见，排在两个导出按钮下面。
 async function openExportMenu(page) {
   const tab = page.locator('#ai2md-tab');
   await tab.waitFor();
@@ -425,8 +439,9 @@ async function openExportMenu(page) {
   await page.locator('#ai2md-export').waitFor({ state: 'visible' });
   assert.strictEqual(await diag.isVisible(), true, '点开标签之后，诊断出现在菜单里');
   const labels = await page.locator('#ai2md-panel button').allTextContents();
-  assert.match(labels[0], /^导出 .+ 会话$/, '第一行是导出会话');
-  assert.strictEqual(labels[1], '导出诊断数据', '第二行是诊断');
+  assert.match(labels[0], /^导出 .+ 会话（带图片）$/, '第一行是带图片导出');
+  assert.match(labels[1], /^导出 .+ 会话（不带图片）$/, '第二行是不带图片导出');
+  assert.strictEqual(labels[2], '导出诊断数据', '第三行是诊断');
 }
 
 async function runCase(browser, c) {
@@ -461,7 +476,7 @@ async function runCase(browser, c) {
   await page.addScriptTag({ content: SCRIPT });
   if (c.afterInject) await c.afterInject(page);
 
-  const exportBtn = page.locator('#ai2md-export');
+  const exportBtn = page.locator(c.button || '#ai2md-export');
   await openExportMenu(page);
 
   if (c.diag) {

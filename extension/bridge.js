@@ -10,9 +10,10 @@
       respond({ platform: AD.name, exporting });
     } else if (message.action === 'export') {
       if (exporting) { respond({ error: '正在导出，请等待当前任务完成。' }); return; }
-      const button = document.getElementById('ai2md-export');
+      const withImages = message.images !== false;
+      const button = document.getElementById(withImages ? 'ai2md-export' : 'ai2md-export-text');
       setPanelOpen(true);
-      void doExport(button);
+      void doExport(button, withImages);
       respond({ started: true });
     } else if (message.action === 'diagnostics') {
       doDebugDump();
