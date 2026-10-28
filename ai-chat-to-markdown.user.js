@@ -279,6 +279,11 @@
         const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):(\d+):/);
         return m ? Number(m[1]) * 1000 + Number(m[2]) : null;
       },
+      // 新界面 key 里的轮次号，第一轮是 0。收集完最小的不是 0，说明更早的消息没加载出来
+      turnNo(el) {
+        const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):/);
+        return m ? Number(m[1]) : null;
+      },
       name: 'ChatGPT',
       label: 'ChatGPT',
       test: () => /(^|\.)chatgpt\.com$/.test(location.hostname) || location.hostname === 'chat.openai.com',
@@ -854,23 +859,41 @@
           md,
           note: item.note,
           idx: AD.index ? AD.index(m.el) : null,
+          turn: AD.turnNo ? AD.turnNo(m.el) : null,
           seq: seq++,
         });
       }
       btn.textContent = `⏳ 已收集 ${seen.size} 条…`;
     };
 
-    // 1. 滚到顶，等顶部懒加载稳定
-    let lastH = -1;
-    let stable = 0;
-    for (let i = 0; i < 30 && stable < 2; i++) {
+    // 1. 滚到顶，等更早的消息加载完。
+    // 长会话滚到顶后才分批去服务器取更早的消息，一批可能要一两秒，所以要等顶部连续几秒没有变化才算到头。
+    // 「没有变化」看两样：滚动区总高度，和最上面那条消息是谁。
+    const topSig = () => {
+      const f = AD.collect()[0];
+      const k = f ? (AD.key && AD.key(f.el)) || `${f.role}|${(f.el.textContent || '').slice(0, 80)}` : '';
+      return `${sc.scrollHeight}|${k}`;
+    };
+    const QUIET = 3000;
+    const t0 = Date.now();
+    let sig = null;
+    let quietSince = t0;
+    for (let i = 0; Date.now() - t0 < 180000; i++) {
+      // 每隔几次先往下挪一点再回顶：有的页面只在「滚进顶部」那一刻去取更早的消息，停在顶上不动不会再触发
+      if (i % 3 === 2) {
+        sc.scrollTop = -1e9;
+        sc.scrollTop += Math.max(200, Math.floor(sc.clientHeight * 0.5));
+        await sleep(150);
+      }
       // 设成极小的负数：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
       sc.scrollTop = -1e9;
       await sleep(400);
       guard();
       grab();
-      if (sc.scrollHeight === lastH) stable++;
-      else { stable = 0; lastH = sc.scrollHeight; }
+      const s = topSig();
+      if (s !== sig) { sig = s; quietSince = Date.now(); }
+      else if (Date.now() - quietSince >= QUIET) break;
+      btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
     }
 
     // 2. 逐屏往下滚，连续两次滚不动才算到底。
@@ -891,6 +914,18 @@
     const useIdx = items.length > 0 && items.every((x) => x.idx != null);
     items.sort((a, b) => (useIdx ? a.idx - b.idx || a.seq - b.seq : a.seq - b.seq));
     log('虚拟列表收集完成，共', items.length, '条');
+
+    // 等满了时间更早的消息还是没出来，会把中间某轮当成第 1 轮；让用户决定是否照样导出
+    const turns = items.map((x) => x.turn).filter((n) => n != null);
+    const head = turns.length ? Math.min(...turns) : 0;
+    if (head > 0 && !confirm(
+      `前面还有 ${head} 轮没加载出来，导出的内容会从中间开始。\n\n` +
+      '点「取消」后可以手动滚到会话最顶上再导出一次；点「确定」照样导出已加载的部分。'
+    )) {
+      const e = new Error('');
+      e.cancelled = true;
+      throw e;
+    }
     return items;
   }
 
@@ -943,6 +978,7 @@
       const { title, date, text } = build(items, resolveTitle(items));
       download(`${date}-${AD.name}-${sanitizeFilename(title)}.md`, text);
     } catch (e) {
+      if (e.cancelled) return;
       if (e.userFacing) { alert(e.message); return; }
       console.error('[导出] 出错', e);
       alert('导出出错：' + e.message + '\n控制台（F12）里有详细信息，欢迎截图提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues');

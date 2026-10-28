@@ -224,6 +224,30 @@ const CASES = [
     },
   },
   {
+    name: 'ChatGPT 超长会话：滚到顶后分批慢慢加载更早的消息，不用手动先拉到顶',
+    url: 'https://chatgpt.com/c/history-test',
+    html: fixture('chatgpt-history.html'),
+    timeout: 120000,
+    async before(page) {
+      const n = await page.evaluate(() => document.querySelectorAll('[data-content-search-unit-key]').length);
+      assert.ok(n < 20, `打开时应只有最近几轮，实际 ${n} 个单元`);
+    },
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 45, '45 轮一轮不缺');
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`, `第 ${i + 1} 轮用户`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
+      });
+    },
+  },
+  {
+    name: 'ChatGPT 更早的消息一直加载不出来：提醒前面缺轮次，取消就不下载',
+    url: 'https://chatgpt.com/c/history-test?stuck',
+    html: fixture('chatgpt-history.html'),
+    expectAlert: /前面还有 30 轮没加载出来/,
+    dismissAlert: true,
+  },
+  {
     name: 'ChatGPT 导出途中切换会话：应取消，不能把两个会话拼在一起',
     url: 'https://chatgpt.com/c/app-shell-test',
     html: fixture('chatgpt-app-shell.html'),
@@ -364,7 +388,7 @@ async function runCase(browser, c) {
     if (c.during) await c.during(page);
     const d = await dialog;
     assert.match(d.message(), c.expectAlert, '提示内容');
-    await d.accept();
+    await (c.dismissAlert ? d.dismiss() : d.accept());
     await page.waitForTimeout(1500);
     assert.ok(!downloaded, '取消后不应下载文件');
     await context.close();
