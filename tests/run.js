@@ -286,6 +286,22 @@ const CASES = [
     },
   },
   {
+    name: 'Gemini 长会话：滚到顶后分批加载更早的消息，其中一批转圈 6 秒',
+    url: 'https://gemini.google.com/app/history',
+    html: fixture('gemini-history.html'),
+    timeout: 120000,
+    async before(page) {
+      assert.strictEqual(await page.locator('user-query').count(), 10, '打开时只有最近 10 轮');
+    },
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30, '30 轮一轮不缺');
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`, `第 ${i + 1} 轮用户`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
+      });
+    },
+  },
+  {
     name: 'Gemini 分享页（无 model-response）',
     url: 'https://gemini.google.com/share/f00dcafe',
     html: fixture('gemini-share.html'),

@@ -796,23 +796,77 @@
     }
   }
 
-  async function preload() {
+  // 最近一次导出时加载早期消息的过程，「导出诊断数据」会一并带上，便于排查长会话没加载全
+  let lastHarvest = null;
+
+  // 页面上「正在加载」的转圈：ChatGPT 是 animate-spin，Gemini 是 Material 的 progress spinner
+  const SPIN_SEL = '[class*="animate-spin"], [role="progressbar"], mat-progress-spinner, mat-spinner, [class*="progress-spinner"], [class*="loading-spinner"]';
+
+  // 滚动区可见范围里有没有转圈（消息里面的不算，比如回复里正在加载的图片）
+  function spinnerVisible(sc, tagged) {
+    const box = sc === document.scrollingElement || sc === document.documentElement
+      ? { top: 0, bottom: innerHeight } : sc.getBoundingClientRect();
+    return Array.from(sc.querySelectorAll(SPIN_SEL)).some((el) => {
+      if (tagged.some((m) => m.el.contains(el))) return false;
+      const r = el.getBoundingClientRect();
+      return r.height > 0 && r.bottom > box.top && r.top < box.bottom;
+    });
+  }
+
+  // 滚到顶（Claude 分享页是底），等更早的消息加载完。
+  // 长会话滚到边上才分批去服务器取更早的消息，一批可能要好几秒（回复很长时更慢），
+  // 所以要等边上连续 QUIET 毫秒没有变化、也没在转圈，才算到头。
+  // 「没有变化」看两样：滚动区总高度，和最边上那条消息是谁。
+  const QUIET = 3000;
+  async function settleEdge(sc, { toTop, deadline, btn, trace, guard = () => {}, onStep = () => {} }) {
+    const edge = toTop ? -1e9 : 1e9;
+    const t0 = Date.now();
+    const rows = [];
+    if (trace) trace.passes.push({ edge: toTop ? 'top' : 'bottom', rows });
+    let sig = null;
+    let quietSince = t0;
+    let changedAt = t0;
+    for (let i = 0; Date.now() < deadline; i++) {
+      // 每隔几次先往回挪一点再贴边：有的页面只在「滚进边上」那一刻去取更早的消息，停着不动不会再触发
+      if (i % 3 === 2) {
+        sc.scrollTop = edge;
+        sc.scrollTop -= Math.sign(edge) * Math.max(200, Math.floor(sc.clientHeight * 0.5));
+        await sleep(150);
+      }
+      // 设成极大或极小的值：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
+      sc.scrollTop = edge;
+      await sleep(400);
+      guard();
+      onStep();
+      const tagged = AD.collect();
+      const m = toTop ? tagged[0] : tagged[tagged.length - 1];
+      const k = m ? (AD.key && AD.key(m.el)) || `${m.role}|${(m.el.textContent || '').slice(0, 80)}` : '';
+      const s = `${sc.scrollHeight}|${k}`;
+      if (s !== sig) changedAt = Date.now();
+      // 转圈太久（一分钟都没新消息）就不再信它，免得撞上一直在转的无关图标白等三分钟
+      const spinning = Date.now() - changedAt < 60000 &&
+        (AD.loadingMore ? AD.loadingMore(sc) : spinnerVisible(sc, tagged));
+      // [毫秒, 滚动区总高度, 滚动位置, 最边上那条消息的 key, 是否在转圈]
+      if (rows.length < 400) rows.push([Date.now() - t0, sc.scrollHeight, Math.round(sc.scrollTop), k.slice(0, 120), spinning ? 1 : 0]);
+      if (s !== sig || spinning) { sig = s; quietSince = Date.now(); }
+      else if (Date.now() - quietSince >= QUIET) break;
+      if (btn) btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
+    }
+  }
+
+  async function preload(btn) {
     if (!CFG.AUTO_LOAD) return;
     const first = await firstMessage();
     if (!first) return;
     const sc = scrollParent(first.el);
     if (!sc) return;
-    let last = -1;
-    let stable = 0;
-    for (let i = 0; i < 40 && stable < 2; i++) {
-      sc.scrollTop = AD.loadFrom === 'top' ? 0 : sc.scrollHeight;
-      await sleep(450);
-      const n = AD.collect().length;
-      if (n === last) stable++;
-      else { stable = 0; last = n; }
-    }
-    if (AD.loadFrom === 'top') sc.scrollTop = sc.scrollHeight;
-    log('预加载完成，共', last, '条消息');
+    const trace = { at: new Date().toISOString(), passes: [] };
+    lastHarvest = trace;
+    const toTop = AD.loadFrom === 'top';
+    await settleEdge(sc, { toTop, deadline: Date.now() + 180000, btn, trace });
+    if (toTop) sc.scrollTop = sc.scrollHeight;
+    trace.items = AD.collect().length;
+    log('预加载完成，共', trace.items, '条消息');
   }
 
   /* ===================== 虚拟列表收集 ===================== */
@@ -826,9 +880,6 @@
     }
     return scrollParent(el);
   }
-
-  // 最近一次导出时顶部加载的过程，「导出诊断数据」会一并带上，便于排查长会话没加载全
-  let lastHarvest = null;
 
   async function harvest(btn) {
     const first = await firstMessage();
@@ -877,45 +928,14 @@
       btn.textContent = `⏳ 已收集 ${seen.size} 条…`;
     };
 
-    // 长会话滚到顶后才分批去服务器取更早的消息，一批可能要一两秒，所以要等顶部连续几秒没有变化才算到头。
-    // 「没有变化」看两样：滚动区总高度，和最上面那条消息是谁；页面上还在转圈加载时不算。
-    // 一批里有很长的回复时，取回来和渲染都更慢，转圈可能远超几秒。
-    const topSig = () => {
-      const f = AD.collect()[0];
-      const k = f ? (AD.key && AD.key(f.el)) || `${f.role}|${(f.el.textContent || '').slice(0, 80)}` : '';
-      return `${sc.scrollHeight}|${k}`;
-    };
-    const QUIET = 3000;
     const t0 = Date.now();
     const trace = { at: new Date(t0).toISOString(), passes: [] };
     lastHarvest = trace;
     // 第 2 步途中序号又变了（更早的消息来得晚），前面收的序号不可信，从头再走一遍
     for (let pass = 0; pass < 3; pass++) {
-      const tp = { top: [] };
-      trace.passes.push(tp);
       // 1. 滚到顶，等更早的消息加载完
-      let sig = null;
-      let quietSince = Date.now();
-      for (let i = 0; Date.now() - t0 < 180000; i++) {
-        // 每隔几次先往下挪一点再回顶：有的页面只在「滚进顶部」那一刻去取更早的消息，停在顶上不动不会再触发
-        if (i % 3 === 2) {
-          sc.scrollTop = -1e9;
-          sc.scrollTop += Math.max(200, Math.floor(sc.clientHeight * 0.5));
-          await sleep(150);
-        }
-        // 设成极小的负数：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
-        sc.scrollTop = -1e9;
-        await sleep(400);
-        guard();
-        grab();
-        const s = topSig();
-        const spinning = !!(AD.loadingMore && AD.loadingMore(sc));
-        // [毫秒, 滚动区总高度, 滚动位置, 最上面那条消息的 key, 是否在转圈]
-        if (tp.top.length < 400) tp.top.push([Date.now() - t0, sc.scrollHeight, Math.round(sc.scrollTop), s.slice(s.indexOf('|') + 1, 120), spinning ? 1 : 0]);
-        if (s !== sig || spinning) { sig = s; quietSince = Date.now(); }
-        else if (Date.now() - quietSince >= QUIET) break;
-        btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
-      }
+      await settleEdge(sc, { toTop: true, deadline: t0 + 180000, btn, trace, guard, onStep: grab });
+      const tp = trace.passes[trace.passes.length - 1];
 
       // 2. 逐屏往下滚，连续两次滚不动才算到底。
       // 不用 scrollTop + clientHeight >= scrollHeight 判断：倒序容器的 scrollTop 是相对底部的负数，那个条件永远不成立
@@ -978,7 +998,7 @@
       if (AD.virtualized) {
         items = await harvest(btn);
       } else {
-        await preload();
+        await preload(btn);
         items = toItems(AD.collect());
       }
       if (location.href !== startUrl) {

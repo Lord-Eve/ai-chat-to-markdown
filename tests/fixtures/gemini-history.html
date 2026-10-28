@@ -1,0 +1,45 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Gemini</title>
+<style>body{margin:0}#chat{height:600px;overflow-y:auto}user-query,model-response{display:block;height:150px}
+.loading{height:60px}</style></head>
+<body>
+<!-- Gemini 长会话：打开时只有最近 10 轮，滚到顶才分批取更早的消息。
+     加载时顶上出现 Material 转圈；第一批 1.5 秒回来，第二批（里面有很长的回复）要 6 秒。
+     新消息插在顶上后，页面把滚动位置往下补，视觉上停在原来那条消息。 -->
+<div class="conversation selected"><div class="conversation-title">长会话</div></div>
+<div id="chat"></div>
+<script>
+const N = 30, BATCH = 10, chat = document.getElementById('chat');
+let first = N, loading = false, atTop = false, batches = 0;
+function turn(n) {
+  const f = document.createDocumentFragment();
+  const q = document.createElement('user-query');
+  q.innerHTML = '<div class="query-text"><p>Question ' + n + '</p></div>';
+  const r = document.createElement('model-response');
+  r.innerHTML = '<response-container><message-content><div class="markdown"><p>Answer ' + n + '</p></div></message-content></response-container>';
+  f.append(q, r);
+  return f;
+}
+function prepend(count) {
+  const f = document.createDocumentFragment();
+  for (let n = first - count + 1; n <= first; n++) f.append(turn(n));
+  first -= count;
+  const h = chat.scrollHeight;
+  chat.prepend(f);
+  chat.scrollTop += chat.scrollHeight - h;
+}
+prepend(BATCH);
+chat.scrollTop = chat.scrollHeight;
+chat.addEventListener('scroll', () => {
+  const now = chat.scrollTop < 50;
+  if (now && !atTop && !loading && first > 0) {
+    loading = true;
+    const spin = document.createElement('div');
+    spin.className = 'loading';
+    spin.innerHTML = '<mat-progress-spinner role="progressbar" mode="indeterminate" style="display:block;width:24px;height:24px"></mat-progress-spinner>';
+    chat.prepend(spin);
+    setTimeout(() => { spin.remove(); prepend(Math.min(BATCH, first)); loading = false; }, batches++ === 1 ? 6000 : 1500);
+  }
+  atTop = now;
+});
+</script>
+</body></html>
