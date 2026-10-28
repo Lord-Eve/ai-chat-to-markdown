@@ -2,7 +2,7 @@
 // @name         AI 会话导出 Markdown（Claude / ChatGPT / Gemini / Grok）
 // @name:en      AI Chat to Markdown (Claude / ChatGPT / Gemini / Grok)
 // @namespace    https://github.com/Lord-Eve
-// @version      2.4.0
+// @version      2.5.0
 // @description  在 Claude、ChatGPT、Gemini、Grok 的会话页上一键导出逐轮 Markdown
 // @description:en  One-click export of Claude chats and share pages, ChatGPT, Gemini and Grok conversations to turn-by-turn Markdown
 // @author       Lord Eve
