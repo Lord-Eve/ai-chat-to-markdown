@@ -3,12 +3,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 每个版本都有对应的 [GitHub Release](https://github.com/Lord-Eve/ai-chat-to-markdown/releases)。
 
-## [Unreleased]
+## [2.5.0] - 2026-10-29
 
 ### 新增
 - **导出图片。** 菜单里的导出按钮分成「带图片」和「不带图片」，扩展弹窗同样。「带图片」会把你上传的图片和模型生成的图片一起导出：会话里有图片时下载 zip，里面是 md 文件和同名的 `.assets` 文件夹（和 Typora、Croquill 的习惯一致），md 按原位置用相对路径引用；没有图片时只下载 md。联网搜索的配图、头像和小图标不下载。下载失败的图片标注 `[图片：未能下载]`。「不带图片」和以前完全一样。
 - 「导出诊断数据」新增消息里每张图片的来源域名、尺寸、所在位置和是否导出，以及最近一次导出的图片下载结果；不含图片地址和内容。
-- `extension/`：Chrome / Edge Manifest V3 浏览器扩展，支持工具栏导出、本地设置页面及诊断下载。
+- `extension/`：Chrome / Edge Manifest V3 浏览器扩展，支持工具栏导出、本地设置页面及诊断下载（首版已于 [extension-v2.4.0](https://github.com/Lord-Eve/ai-chat-to-markdown/releases/tag/extension-v2.4.0) 单独发布）。
 - `npm run build:extension` 从现有油猴脚本构建扩展核心，`npm run test:extension` 验证实际扩展加载和四个平台模拟页导出。
 
 ### 改进
@@ -93,6 +93,8 @@
 - Grok 角色判断只认完整类名，避开 `md:items-end` 这类响应式变体；标题去掉「| Shared Grok Conversation」后缀。
 - 工具提示只匹配 80 字以内的短行，不再吞掉以「Searched…」开头的正文。
 
+[2.5.0]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.5...v2.4.0
 [2.3.1]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.5...v2.3.0
 [2.2.5]: https://github.com/Lord-Eve/ai-chat-to-markdown/compare/v2.2.4...v2.2.5
