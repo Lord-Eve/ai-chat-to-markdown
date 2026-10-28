@@ -834,7 +834,8 @@
     let sig = null;
     let quietSince = t0;
     let changedAt = t0;
-    for (let i = 0; Date.now() < deadline; i++) {
+    // 时间用完了也至少贴一次边：重收的那一遍要从顶上开始往下走，才能把旧序号刷新掉
+    for (let i = 0; i === 0 || Date.now() < deadline; i++) {
       // 每隔几次先往回挪一点再贴边：有的页面只在「滚进边上」那一刻去取更早的消息，停着不动不会再触发
       if (i % 3 === 2) {
         sc.scrollTop = edge;
