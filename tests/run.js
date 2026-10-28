@@ -44,6 +44,16 @@ const claudeChatCheck = (md, { title, turns }) => {
   assert.doesNotMatch(md, /尚未发送|草稿|侧栏|分享快照/);
 };
 
+// 45 轮按顺序一轮不缺；第 20 轮用户只发了图片
+const historyCheck = (md, { turns }) => {
+  assert.strictEqual(turns.length, 45, '45 轮一轮不缺');
+  turns.forEach((t, i) => {
+    const n = i + 1;
+    assert.strictEqual(t.user, n === 20 ? '> *[附件：图片或文件，未随文本导出]*' : `Question ${n}`, `第 ${n} 轮用户`);
+    assert.strictEqual(t.ai, `Answer ${n}`, `第 ${n} 轮 AI`);
+  });
+};
+
 const CASES = [
   {
     name: 'Claude 虚拟列表多条无 ID 纯附件消息（卸载重挂）',
@@ -182,6 +192,8 @@ const CASES = [
       ]);
       const dump = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
       assert.strictEqual(dump.adapter, 'chatgpt');
+      assert.ok(dump.scroll && dump.scroll.scrollHeight > 0, '诊断里有滚动区状态');
+      assert.ok('lastExport' in dump, '诊断里有最近一次导出的顶部加载记录（刚开始导出时可能还是空的）');
       const panel = page.locator('#ai2md-panel');
       assert.strictEqual(await panel.isVisible(), true, '导出进行中点诊断，菜单不应收起');
       assert.match(await page.locator('#ai2md-export').textContent(), /已收集|加载/, '进度文字还在');
@@ -224,6 +236,31 @@ const CASES = [
     },
   },
   {
+    name: 'ChatGPT 超长会话：滚到顶后分批慢慢加载更早的消息，不用手动先拉到顶',
+    url: 'https://chatgpt.com/c/history-test',
+    html: fixture('chatgpt-history.html'),
+    timeout: 120000,
+    async before(page) {
+      const n = await page.evaluate(() => document.querySelectorAll('[data-content-search-unit-key]').length);
+      assert.ok(n < 20, `打开时应只有最近几轮，实际 ${n} 个单元`);
+    },
+    check: historyCheck,
+  },
+  {
+    name: 'ChatGPT 超长会话：更早的消息在往下收集途中才到，轮次号整体后移，要从头再收一遍',
+    url: 'https://chatgpt.com/c/history-test?late',
+    html: fixture('chatgpt-history.html'),
+    timeout: 180000,
+    check: historyCheck,
+  },
+  {
+    name: 'ChatGPT 超长会话：一批里有很长的回复，顶上转圈 8 秒才加载出来，要等它转完',
+    url: 'https://chatgpt.com/c/history-test?slow',
+    html: fixture('chatgpt-history.html'),
+    timeout: 180000,
+    check: historyCheck,
+  },
+  {
     name: 'ChatGPT 导出途中切换会话：应取消，不能把两个会话拼在一起',
     url: 'https://chatgpt.com/c/app-shell-test',
     html: fixture('chatgpt-app-shell.html'),
@@ -246,6 +283,31 @@ const CASES = [
       assert.doesNotMatch(turns[0].ai, /thinking text|显示思路|复制/);
       assert.doesNotMatch(md, /^Gemini$/m, '回复头部的 bot 名不应进正文');
       assert.strictEqual(turns[1].ai, '不客气。');
+    },
+  },
+  {
+    name: 'Gemini 长会话：滚到顶后分批加载更早的消息，其中一批转圈 6 秒',
+    url: 'https://gemini.google.com/app/history',
+    html: fixture('gemini-history.html'),
+    timeout: 120000,
+    async before(page) {
+      assert.strictEqual(await page.locator('user-query').count(), 10, '打开时只有最近 10 轮');
+    },
+    check(md, { turns }) {
+      assert.strictEqual(turns.length, 30, '30 轮一轮不缺');
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`, `第 ${i + 1} 轮用户`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
+      });
+    },
+    async after(page) {
+      // Gemini 消息没有 ID：诊断里的导出记录不能带上消息正文
+      await openExportMenu(page);
+      const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#ai2md-diag').click()]);
+      const text = fs.readFileSync(await dl.path(), 'utf8');
+      const dump = JSON.parse(text);
+      assert.ok(dump.lastExport.passes[0].rows.length > 0, '诊断里有导出记录');
+      assert.doesNotMatch(text, /Question \d|Answer \d/, '诊断不应包含消息正文');
     },
   },
   {
@@ -277,6 +339,24 @@ const CASES = [
       assert.match(turns[0].ai, /Grok answer one\./);
       assert.strictEqual(turns[1].user, 'User asks two', '用户气泡里嵌 items-start 也要认成用户');
       assert.strictEqual(turns[1].ai, '*（Searched 8 web pages）*\n\nGrok answer two.');
+    },
+  },
+  {
+    name: 'Grok 长会话：虚拟列表只挂载视口附近，行在 DOM 里乱序，顶上分批加载更早的消息',
+    url: 'https://grok.com/c/long-test',
+    html: fixture('grok-virtual.html'),
+    timeout: 120000,
+    async before(page) {
+      const n = await page.locator('.message-bubble').count();
+      assert.ok(n < 12, `模拟页应只挂载一部分消息，实际 ${n} 条`);
+    },
+    check(md, { title, turns }) {
+      assert.strictEqual(title, 'Long Grok Test');
+      assert.strictEqual(turns.length, 30, '30 轮一轮不缺');
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`, `第 ${i + 1} 轮用户`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
+      });
     },
   },
 ];
@@ -392,6 +472,7 @@ async function runCase(browser, c) {
     e.message += `\n----- 导出内容 -----\n${md}`;
     throw e;
   }
+  if (c.after) await c.after(page);
   await context.close();
 }
 

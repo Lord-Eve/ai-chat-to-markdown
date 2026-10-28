@@ -275,10 +275,14 @@
         const t = el.closest('[data-testid^="conversation-turn-"]');
         const n = t ? parseInt(attr(t, 'data-testid').replace(/\D+/g, ''), 10) : NaN;
         if (Number.isFinite(n)) return n;
-        // 新界面：轮次和单元序号都在 key 里；不是 fallback-turn-N 这种格式时退回按收集顺序排
+        // 新界面：轮次和单元序号都在 key 里；不是 fallback-turn-N 这种格式时退回按收集顺序排。
+        // 轮次号从「当前已加载的第一轮」数起，顶上加载出更早的消息后整体后移，收集时要以最新看到的为准
         const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):(\d+):/);
         return m ? Number(m[1]) * 1000 + Number(m[2]) : null;
       },
+      // 顶上正在取更早的消息时，滚动区里（消息之外）有个转圈图标
+      loadingMore: (sc) => Array.from(sc.querySelectorAll('[class*="animate-spin"]'))
+        .some((el) => !el.closest('[data-content-search-turn-key], [data-testid^="conversation-turn-"]')),
       name: 'ChatGPT',
       label: 'ChatGPT',
       test: () => /(^|\.)chatgpt\.com$/.test(location.hostname) || location.hostname === 'chat.openai.com',
@@ -297,6 +301,7 @@
         '[data-user-message-bubble]',
         '[data-markdown-text-style="assistant-message"]',
         '[data-app-action-timeline-scroll]',
+        '[data-app-action-timeline-scroll] [class*="animate-spin"]',
       ],
       collect() {
         const legacy = Array.from(document.querySelectorAll('[data-message-author-role]'))
@@ -419,6 +424,12 @@
       name: 'Grok',
       label: 'Grok',
       test: () => location.hostname === 'grok.com',
+      // Grok 的会话也是虚拟列表：只渲染视口附近的消息，滚走的会被卸载，要边滚边收集
+      virtualized: true,
+      key(el) {
+        const row = el.closest('[id^="response-"]');
+        return row ? row.id : null;
+      },
       loadFrom: 'top',
       attachNote: '图片或文件，未随文本导出',
       probes: [
@@ -437,7 +448,9 @@
           }
           return { role: isUser ? 'user' : 'ai', el };
         });
-        return dropNested(list);
+        // 虚拟列表里的行可能按挂载先后排在 DOM 里，按屏幕上的位置排回去
+        const top = (m) => m.el.getBoundingClientRect().top;
+        return dropNested(list).sort((a, b) => top(a) - top(b));
       },
       content: (el) => el.querySelector('.response-content-markdown') || el,
       clean: () => {},
@@ -690,7 +703,12 @@
     const fileNote = `> *[附件：${AD.attachNote}]*`;
     return tagged.map((m) => m.attachOnly
       ? { role: 'user', md: '', note: fileNote }
-      : { role: m.role, md: renderMessage(m.el, m.role), note: attachmentNote(m.el, m.role) || (m.attach ? fileNote : null) });
+      : (() => {
+        const md = renderMessage(m.el, m.role);
+        const note = attachmentNote(m.el, m.role) || (m.attach ? fileNote : null);
+        // 没有文字也没认出附件的用户消息，基本是只发了图片或文件，别留一轮空白
+        return { role: m.role, md, note: note || (m.role === 'user' && !md ? fileNote : null) };
+      })());
   }
 
   function firstUserSnippet(items) {
@@ -786,23 +804,86 @@
     }
   }
 
-  async function preload() {
+  // 最近一次导出时加载早期消息的过程，「导出诊断数据」会一并带上，便于排查长会话没加载全
+  let lastHarvest = null;
+
+  // 页面上「正在加载」的转圈：ChatGPT 是 animate-spin，Gemini 是 Material 的 progress spinner
+  const SPIN_SEL = '[class*="animate-spin"], [role="progressbar"], mat-progress-spinner, mat-spinner, [class*="progress-spinner"], [class*="loading-spinner"]';
+
+  // 滚动区可见范围里有没有转圈（消息里面的不算，比如回复里正在加载的图片）
+  function spinnerVisible(sc, tagged) {
+    const box = sc === document.scrollingElement || sc === document.documentElement
+      ? { top: 0, bottom: innerHeight } : sc.getBoundingClientRect();
+    return Array.from(sc.querySelectorAll(SPIN_SEL)).some((el) => {
+      if (tagged.some((m) => m.el.contains(el))) return false;
+      const r = el.getBoundingClientRect();
+      return r.height > 0 && r.bottom > box.top && r.top < box.bottom;
+    });
+  }
+
+  // 滚到顶（Claude 分享页是底），等更早的消息加载完。
+  // 长会话滚到边上才分批去服务器取更早的消息，一批可能要好几秒（回复很长时更慢），
+  // 所以要等边上连续 QUIET 毫秒没有变化、也没在转圈，才算到头。
+  // 「没有变化」看两样：滚动区总高度，和最边上那条消息是谁。
+  const QUIET = 3000;
+  const hash = (str) => {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = (h * 33 + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  };
+  async function settleEdge(sc, { toTop, deadline, btn, trace, guard = () => {}, onStep = () => {} }) {
+    const edge = toTop ? -1e9 : 1e9;
+    const t0 = Date.now();
+    const rows = [];
+    if (trace) trace.passes.push({ edge: toTop ? 'top' : 'bottom', rows });
+    let sig = null;
+    let quietSince = t0;
+    let changedAt = t0;
+    // 时间用完了也至少贴一次边：重收的那一遍要从顶上开始往下走，才能把旧序号刷新掉
+    for (let i = 0; i === 0 || Date.now() < deadline; i++) {
+      // 每隔几次先往回挪一点再贴边：有的页面只在「滚进边上」那一刻去取更早的消息，停着不动不会再触发
+      if (i % 3 === 2) {
+        sc.scrollTop = edge;
+        sc.scrollTop -= Math.sign(edge) * Math.max(200, Math.floor(sc.clientHeight * 0.5));
+        await sleep(150);
+      }
+      // 设成极大或极小的值：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
+      sc.scrollTop = edge;
+      await sleep(400);
+      guard();
+      onStep();
+      const tagged = AD.collect();
+      const m = toTop ? tagged[0] : tagged[tagged.length - 1];
+      const id = m && AD.key && AD.key(m.el);
+      const k = m ? id || `${m.role}|${(m.el.textContent || '').slice(0, 80)}` : '';
+      const s = `${sc.scrollHeight}|${k}`;
+      if (s !== sig) changedAt = Date.now();
+      // 转圈太久（一分钟都没新消息）就不再信它，免得撞上一直在转的无关图标白等三分钟
+      const spinning = Date.now() - changedAt < 60000 &&
+        (AD.loadingMore ? AD.loadingMore(sc) : spinnerVisible(sc, tagged));
+      // [毫秒, 滚动区总高度, 滚动位置, 最边上那条消息, 是否在转圈]。
+      // 记录会进诊断文件，没有消息 ID 的只记角色和文字的哈希，不记正文
+      const who = !m ? '' : id ? id.slice(0, 120) : `${m.role}#${hash(k)}`;
+      if (rows.length < 400) rows.push([Date.now() - t0, sc.scrollHeight, Math.round(sc.scrollTop), who, spinning ? 1 : 0]);
+      if (s !== sig || spinning) { sig = s; quietSince = Date.now(); }
+      else if (Date.now() - quietSince >= QUIET) break;
+      if (btn) btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
+    }
+  }
+
+  async function preload(btn) {
     if (!CFG.AUTO_LOAD) return;
     const first = await firstMessage();
     if (!first) return;
     const sc = scrollParent(first.el);
     if (!sc) return;
-    let last = -1;
-    let stable = 0;
-    for (let i = 0; i < 40 && stable < 2; i++) {
-      sc.scrollTop = AD.loadFrom === 'top' ? 0 : sc.scrollHeight;
-      await sleep(450);
-      const n = AD.collect().length;
-      if (n === last) stable++;
-      else { stable = 0; last = n; }
-    }
-    if (AD.loadFrom === 'top') sc.scrollTop = sc.scrollHeight;
-    log('预加载完成，共', last, '条消息');
+    const trace = { at: new Date().toISOString(), passes: [] };
+    lastHarvest = trace;
+    const toTop = AD.loadFrom === 'top';
+    await settleEdge(sc, { toTop, deadline: Date.now() + 180000, btn, trace });
+    if (toTop) sc.scrollTop = sc.scrollHeight;
+    trace.items = AD.collect().length;
+    log('预加载完成，共', trace.items, '条消息');
   }
 
   /* ===================== 虚拟列表收集 ===================== */
@@ -823,6 +904,8 @@
     const sc = scrollRootFor(first.el);
     const seen = new Map();
     let seq = 0;
+    let walk = 0;
+    let renumbered = false;
     // 单页应用切换会话不会刷新页面；中途换了会话或滚动区被替换，就停下来，免得把两个会话拼在一起
     const startUrl = location.href;
     const guard = () => {
@@ -843,53 +926,65 @@
           ? `attachment|${Math.round(m.el.getBoundingClientRect().top - viewportTop + sc.scrollTop)}`
           : null;
         const key = (AD.key && AD.key(m.el)) || attachmentKey || `${m.role}|${md.slice(0, 300)}`;
+        const idx = AD.index ? AD.index(m.el) : null;
         const prev = seen.get(key);
         if (prev) {
           // 同一条消息可能先挂载了半成品，保留渲染最完整的一次
           if (md.length > prev.md.length) prev.md = md;
+          // 序号变了说明顶上又加载出了更早的消息，旧序号作废。
+          // 这一趟往下收集里已经看过的又变了，说明这一趟收的序号不可信
+          if (idx !== prev.idx) {
+            if (prev.walk === walk) renumbered = true;
+            prev.idx = idx;
+          }
+          // 没有序号的平台按看到的先后排：以每一趟从上往下收集里第一次看到的先后为准，
+          // 第 1 步在顶上等加载时先看到的那批较新消息，不能排到更早的消息前面
+          if (prev.walk !== walk) prev.seq = seq++;
+          prev.walk = walk;
           continue;
         }
-        seen.set(key, {
-          role: m.role,
-          md,
-          note: item.note,
-          idx: AD.index ? AD.index(m.el) : null,
-          seq: seq++,
-        });
+        seen.set(key, { role: m.role, md, note: item.note, idx, walk, seq: seq++ });
       }
       btn.textContent = `⏳ 已收集 ${seen.size} 条…`;
     };
 
-    // 1. 滚到顶，等顶部懒加载稳定
-    let lastH = -1;
-    let stable = 0;
-    for (let i = 0; i < 30 && stable < 2; i++) {
-      // 设成极小的负数：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
-      sc.scrollTop = -1e9;
-      await sleep(400);
-      guard();
-      grab();
-      if (sc.scrollHeight === lastH) stable++;
-      else { stable = 0; lastH = sc.scrollHeight; }
-    }
+    const t0 = Date.now();
+    const trace = { at: new Date(t0).toISOString(), passes: [] };
+    lastHarvest = trace;
+    // 第 2 步途中序号又变了（更早的消息来得晚），前面收的序号不可信，从头再走一遍
+    for (let pass = 0; pass < 3; pass++) {
+      // 1. 滚到顶，等更早的消息加载完
+      await settleEdge(sc, { toTop: true, deadline: t0 + 180000, btn, trace, guard, onStep: grab });
+      const tp = trace.passes[trace.passes.length - 1];
 
-    // 2. 逐屏往下滚，连续两次滚不动才算到底。
-    // 不用 scrollTop + clientHeight >= scrollHeight 判断：倒序容器的 scrollTop 是相对底部的负数，那个条件永远不成立
-    const step = Math.max(200, Math.floor(sc.clientHeight * 0.6));
-    let bottom = 0;
-    for (let i = 0; i < 3000 && bottom < 2; i++) {
-      const before = sc.scrollTop;
-      sc.scrollTop = before + step;
-      await sleep(300);
-      guard();
-      grab();
-      if (Math.abs(sc.scrollTop - before) < 1) bottom++;
-      else bottom = 0;
+      // 2. 逐屏往下滚，连续两次滚不动才算到底。
+      // 不用 scrollTop + clientHeight >= scrollHeight 判断：倒序容器的 scrollTop 是相对底部的负数，那个条件永远不成立
+      walk++;
+      renumbered = false;
+      const step = Math.max(200, Math.floor(sc.clientHeight * 0.6));
+      let bottom = 0;
+      for (let i = 0; i < 3000 && bottom < 2; i++) {
+        const before = sc.scrollTop;
+        sc.scrollTop = before + step;
+        await sleep(300);
+        guard();
+        grab();
+        if (Math.abs(sc.scrollTop - before) < 1) bottom++;
+        else bottom = 0;
+      }
+
+      tp.collected = seen.size;
+      tp.renumbered = renumbered;
+      if (!renumbered) break;
+      log('收集途中顶上又加载出更早的消息，从头再收一遍');
     }
 
     const items = [...seen.values()];
     const useIdx = items.length > 0 && items.every((x) => x.idx != null);
     items.sort((a, b) => (useIdx ? a.idx - b.idx || a.seq - b.seq : a.seq - b.seq));
+    trace.ms = Date.now() - t0;
+    trace.items = items.length;
+    trace.useIdx = useIdx;
     log('虚拟列表收集完成，共', items.length, '条');
     return items;
   }
@@ -923,7 +1018,7 @@
       if (AD.virtualized) {
         items = await harvest(btn);
       } else {
-        await preload();
+        await preload(btn);
         items = toItems(AD.collect());
       }
       if (location.href !== startUrl) {
@@ -954,6 +1049,30 @@
     }
   }
 
+  // 滚动区现在的状态：位置、挂载了哪些消息（只记 key，不记正文）、顶上有没有转圈或「加载更多」之类的控件
+  function scrollInfo(tagged) {
+    const sc = tagged[0] ? scrollRootFor(tagged[0].el)
+      : (typeof AD.scrollRoot === 'function' ? AD.scrollRoot() : null);
+    if (!sc) return null;
+    const keys = tagged.map((m) => (AD.key && AD.key(m.el)) || m.role);
+    const firstEl = tagged[0] && tagged[0].el;
+    const before = (n) => firstEl && !!(n.compareDocumentPosition(firstEl) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const scTop = sc.getBoundingClientRect().top;
+    return {
+      scrollTop: Math.round(sc.scrollTop),
+      scrollHeight: sc.scrollHeight,
+      clientHeight: sc.clientHeight,
+      keys: keys.length > 16 ? [...keys.slice(0, 10), '…', ...keys.slice(-5)] : keys,
+      spinners: Array.from(sc.querySelectorAll('[class*="animate-spin"]'))
+        .map((n) => ({ y: Math.round(n.getBoundingClientRect().top - scTop), inMessage: !!n.closest('[data-content-search-turn-key]') })),
+      controlsAboveFirst: Array.from(sc.querySelectorAll('button, a, [role="button"]'))
+        .filter(before)
+        .map((n) => (n.getAttribute('aria-label') || n.textContent || '').trim().slice(0, 40))
+        .filter(Boolean)
+        .slice(0, 10),
+    };
+  }
+
   function doDebugDump() {
     const tagged = AD.collect();
     // 只在会话区域里取样；侧边栏元素多，整页取样会被它占满
@@ -982,6 +1101,8 @@
       iframes: document.querySelectorAll('iframe').length,
       bodyTextLength: (document.body.innerText || document.body.textContent || '').length,
       areaTextLength: (area.innerText || area.textContent || '').length,
+      scroll: scrollInfo(tagged),
+      lastExport: lastHarvest,
     };
     console.log('[导出] 诊断数据', dump);
     download(`${AD.id}-debug-${todayStr()}.json`, JSON.stringify(dump, null, 2));
