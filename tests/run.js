@@ -301,6 +301,20 @@ const CASES = [
     },
   },
   {
+    name: 'ChatGPT 图片：页面没有标题时，建议标题和文件名里不能混进图片占位符',
+    url: 'https://chatgpt.com/c/images-test',
+    html: fixture('chatgpt-images.html').replace('<title>Images Test</title>', '<title>ChatGPT</title>'),
+    zip: true,
+    promptAnswer: '',
+    check(md, { title }, { prompts, fname, zip }) {
+      assert.strictEqual(prompts.length, 1);
+      assert.strictEqual(prompts[0].defaultValue, '看这张图', '建议标题只取文字');
+      assert.strictEqual(title, '看这张图');
+      assert.match(fname, /-ChatGPT-看这张图\.zip$/);
+      assert.ok(Object.keys(zip).every((n) => !/[\uE000-\uF8FF]/.test(n)), 'zip 里的文件名不含占位符');
+    },
+  },
+  {
     name: 'ChatGPT 图片：选「不带图片」时和以前一样只导出 md，图片位置标注附件',
     url: 'https://chatgpt.com/c/images-test',
     html: fixture('chatgpt-images.html'),

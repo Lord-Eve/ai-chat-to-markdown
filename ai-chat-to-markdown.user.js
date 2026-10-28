@@ -56,6 +56,7 @@
   function sanitizeFilename(s) {
     return (s || '未命名会话')
       .replace(/[\\/:*?"<>|\n\r\t]/g, '_')
+      .replace(/[\uE000-\uF8FF]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 80);
@@ -921,9 +922,11 @@
   }
 
   function firstUserSnippet(items) {
-    const u = items.find((m) => m.role === 'user' && m.md);
+    // 图片占位符不算文字；只发了图片的消息跳过
+    const text = (m) => m.md.replace(IMG_MARK_RE, ' ').trim();
+    const u = items.find((m) => m.role === 'user' && text(m));
     if (!u) return '';
-    const t = u.md.replace(/[#*`>$\[\]()_~|-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const t = text(u).replace(/[#*`>$\[\]()_~|-]/g, ' ').replace(/\s+/g, ' ').trim();
     return t.length > 30 ? t.slice(0, 30) + '…' : t;
   }
 
