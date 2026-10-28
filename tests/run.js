@@ -192,6 +192,8 @@ const CASES = [
       ]);
       const dump = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
       assert.strictEqual(dump.adapter, 'chatgpt');
+      assert.ok(dump.scroll && dump.scroll.scrollHeight > 0, '诊断里有滚动区状态');
+      assert.ok('lastExport' in dump, '诊断里有最近一次导出的顶部加载记录（刚开始导出时可能还是空的）');
       const panel = page.locator('#ai2md-panel');
       assert.strictEqual(await panel.isVisible(), true, '导出进行中点诊断，菜单不应收起');
       assert.match(await page.locator('#ai2md-export').textContent(), /已收集|加载/, '进度文字还在');
@@ -247,6 +249,13 @@ const CASES = [
   {
     name: 'ChatGPT 超长会话：更早的消息在往下收集途中才到，轮次号整体后移，要从头再收一遍',
     url: 'https://chatgpt.com/c/history-test?late',
+    html: fixture('chatgpt-history.html'),
+    timeout: 180000,
+    check: historyCheck,
+  },
+  {
+    name: 'ChatGPT 超长会话：一批里有很长的回复，顶上转圈 8 秒才加载出来，要等它转完',
+    url: 'https://chatgpt.com/c/history-test?slow',
     html: fixture('chatgpt-history.html'),
     timeout: 180000,
     check: historyCheck,

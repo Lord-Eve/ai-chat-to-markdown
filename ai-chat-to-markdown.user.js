@@ -280,6 +280,9 @@
         const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):(\d+):/);
         return m ? Number(m[1]) * 1000 + Number(m[2]) : null;
       },
+      // 顶上正在取更早的消息时，滚动区里（消息之外）有个转圈图标
+      loadingMore: (sc) => Array.from(sc.querySelectorAll('[class*="animate-spin"]'))
+        .some((el) => !el.closest('[data-content-search-turn-key], [data-testid^="conversation-turn-"]')),
       name: 'ChatGPT',
       label: 'ChatGPT',
       test: () => /(^|\.)chatgpt\.com$/.test(location.hostname) || location.hostname === 'chat.openai.com',
@@ -298,6 +301,7 @@
         '[data-user-message-bubble]',
         '[data-markdown-text-style="assistant-message"]',
         '[data-app-action-timeline-scroll]',
+        '[data-app-action-timeline-scroll] [class*="animate-spin"]',
       ],
       collect() {
         const legacy = Array.from(document.querySelectorAll('[data-message-author-role]'))
@@ -823,6 +827,9 @@
     return scrollParent(el);
   }
 
+  // 最近一次导出时顶部加载的过程，「导出诊断数据」会一并带上，便于排查长会话没加载全
+  let lastHarvest = null;
+
   async function harvest(btn) {
     const first = await firstMessage();
     if (!first) return [];
@@ -871,7 +878,8 @@
     };
 
     // 长会话滚到顶后才分批去服务器取更早的消息，一批可能要一两秒，所以要等顶部连续几秒没有变化才算到头。
-    // 「没有变化」看两样：滚动区总高度，和最上面那条消息是谁。
+    // 「没有变化」看两样：滚动区总高度，和最上面那条消息是谁；页面上还在转圈加载时不算。
+    // 一批里有很长的回复时，取回来和渲染都更慢，转圈可能远超几秒。
     const topSig = () => {
       const f = AD.collect()[0];
       const k = f ? (AD.key && AD.key(f.el)) || `${f.role}|${(f.el.textContent || '').slice(0, 80)}` : '';
@@ -879,8 +887,12 @@
     };
     const QUIET = 3000;
     const t0 = Date.now();
+    const trace = { at: new Date(t0).toISOString(), passes: [] };
+    lastHarvest = trace;
     // 第 2 步途中序号又变了（更早的消息来得晚），前面收的序号不可信，从头再走一遍
     for (let pass = 0; pass < 3; pass++) {
+      const tp = { top: [] };
+      trace.passes.push(tp);
       // 1. 滚到顶，等更早的消息加载完
       let sig = null;
       let quietSince = Date.now();
@@ -897,7 +909,10 @@
         guard();
         grab();
         const s = topSig();
-        if (s !== sig) { sig = s; quietSince = Date.now(); }
+        const spinning = !!(AD.loadingMore && AD.loadingMore(sc));
+        // [毫秒, 滚动区总高度, 滚动位置, 最上面那条消息的 key, 是否在转圈]
+        if (tp.top.length < 400) tp.top.push([Date.now() - t0, sc.scrollHeight, Math.round(sc.scrollTop), s.slice(s.indexOf('|') + 1, 120), spinning ? 1 : 0]);
+        if (s !== sig || spinning) { sig = s; quietSince = Date.now(); }
         else if (Date.now() - quietSince >= QUIET) break;
         btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
       }
@@ -918,6 +933,8 @@
         else bottom = 0;
       }
 
+      tp.collected = seen.size;
+      tp.renumbered = renumbered;
       if (!renumbered) break;
       log('收集途中顶上又加载出更早的消息，从头再收一遍');
     }
@@ -925,6 +942,9 @@
     const items = [...seen.values()];
     const useIdx = items.length > 0 && items.every((x) => x.idx != null);
     items.sort((a, b) => (useIdx ? a.idx - b.idx || a.seq - b.seq : a.seq - b.seq));
+    trace.ms = Date.now() - t0;
+    trace.items = items.length;
+    trace.useIdx = useIdx;
     log('虚拟列表收集完成，共', items.length, '条');
     return items;
   }
@@ -989,6 +1009,30 @@
     }
   }
 
+  // 滚动区现在的状态：位置、挂载了哪些消息（只记 key，不记正文）、顶上有没有转圈或「加载更多」之类的控件
+  function scrollInfo(tagged) {
+    const sc = tagged[0] ? scrollRootFor(tagged[0].el)
+      : (typeof AD.scrollRoot === 'function' ? AD.scrollRoot() : null);
+    if (!sc) return null;
+    const keys = tagged.map((m) => (AD.key && AD.key(m.el)) || m.role);
+    const firstEl = tagged[0] && tagged[0].el;
+    const before = (n) => firstEl && !!(n.compareDocumentPosition(firstEl) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const scTop = sc.getBoundingClientRect().top;
+    return {
+      scrollTop: Math.round(sc.scrollTop),
+      scrollHeight: sc.scrollHeight,
+      clientHeight: sc.clientHeight,
+      keys: keys.length > 16 ? [...keys.slice(0, 10), '…', ...keys.slice(-5)] : keys,
+      spinners: Array.from(sc.querySelectorAll('[class*="animate-spin"]'))
+        .map((n) => ({ y: Math.round(n.getBoundingClientRect().top - scTop), inMessage: !!n.closest('[data-content-search-turn-key]') })),
+      controlsAboveFirst: Array.from(sc.querySelectorAll('button, a, [role="button"]'))
+        .filter(before)
+        .map((n) => (n.getAttribute('aria-label') || n.textContent || '').trim().slice(0, 40))
+        .filter(Boolean)
+        .slice(0, 10),
+    };
+  }
+
   function doDebugDump() {
     const tagged = AD.collect();
     // 只在会话区域里取样；侧边栏元素多，整页取样会被它占满
@@ -1017,6 +1061,8 @@
       iframes: document.querySelectorAll('iframe').length,
       bodyTextLength: (document.body.innerText || document.body.textContent || '').length,
       areaTextLength: (area.innerText || area.textContent || '').length,
+      scroll: scrollInfo(tagged),
+      lastExport: lastHarvest,
     };
     console.log('[导出] 诊断数据', dump);
     download(`${AD.id}-debug-${todayStr()}.json`, JSON.stringify(dump, null, 2));

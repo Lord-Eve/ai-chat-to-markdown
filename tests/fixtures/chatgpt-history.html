@@ -6,12 +6,13 @@
 <!-- 登录态新界面的超长会话：打开时只有最近 15 轮，滚到顶才分批向服务器取更早的消息，每批 1.5 秒才回来。
      和真实页面一样，fallback-turn-N 从「当前已加载的第一轮」数起，加载出更早的消息后整体后移。
      第 20 轮用户只发了一张图，气泡里没有文字。
-     网址带 ?late 时第一批要 5 秒才回来，脚本已经开始往下收集了。 -->
+     网址带 ?late 时第一批要 5 秒才回来，脚本已经开始往下收集了。
+     网址带 ?slow 时第二批（里面有很长的回复）要 8 秒才回来，期间顶上一直转圈。 -->
 <main>
   <div id="thread" class="thread-scroll-container overflow-y-auto" data-app-action-timeline-scroll role="region"><div id="spacer"></div></div>
 </main>
 <script>
-const N = 45, BATCH = 15, DELAY = 1500, H = 300, late = location.search.includes('late');
+const N = 45, BATCH = 15, DELAY = 1500, H = 300, late = location.search.includes('late'), slow = location.search.includes('slow');
 const root = document.getElementById('thread'), spacer = document.getElementById('spacer');
 let first = N - BATCH, loading = false, atTop = false, batches = 0;
 const mounted = new Map();
@@ -41,7 +42,13 @@ root.addEventListener('scroll', () => {
   const now = fromTop() < 50;
   if (now && !atTop && !loading && first > 0) {
     loading = true;
-    setTimeout(() => { first = Math.max(0, first - BATCH); loading = false; layout(); }, late && batches++ === 0 ? 5000 : DELAY);
+    const spin = document.createElement('div');
+    spin.className = 'flex justify-center py-4';
+    spin.innerHTML = '<div class="motion-safe:animate-spin"></div>';
+    spacer.prepend(spin);
+    const n = batches++;
+    const wait = late && n === 0 ? 5000 : slow && n === 1 ? 8000 : DELAY;
+    setTimeout(() => { spin.remove(); first = Math.max(0, first - BATCH); loading = false; layout(); }, wait);
   }
   atTop = now;
 });
