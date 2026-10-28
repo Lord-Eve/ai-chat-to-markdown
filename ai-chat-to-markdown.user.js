@@ -275,14 +275,10 @@
         const t = el.closest('[data-testid^="conversation-turn-"]');
         const n = t ? parseInt(attr(t, 'data-testid').replace(/\D+/g, ''), 10) : NaN;
         if (Number.isFinite(n)) return n;
-        // 新界面：轮次和单元序号都在 key 里；不是 fallback-turn-N 这种格式时退回按收集顺序排
+        // 新界面：轮次和单元序号都在 key 里；不是 fallback-turn-N 这种格式时退回按收集顺序排。
+        // 轮次号从「当前已加载的第一轮」数起，顶上加载出更早的消息后整体后移，收集时要以最新看到的为准
         const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):(\d+):/);
         return m ? Number(m[1]) * 1000 + Number(m[2]) : null;
-      },
-      // 新界面 key 里的轮次号，第一轮是 0。收集完最小的不是 0，说明更早的消息没加载出来
-      turnNo(el) {
-        const m = attr(el, 'data-content-search-unit-key').match(/^fallback-turn-(\d+):/);
-        return m ? Number(m[1]) : null;
       },
       name: 'ChatGPT',
       label: 'ChatGPT',
@@ -695,7 +691,12 @@
     const fileNote = `> *[附件：${AD.attachNote}]*`;
     return tagged.map((m) => m.attachOnly
       ? { role: 'user', md: '', note: fileNote }
-      : { role: m.role, md: renderMessage(m.el, m.role), note: attachmentNote(m.el, m.role) || (m.attach ? fileNote : null) });
+      : (() => {
+        const md = renderMessage(m.el, m.role);
+        const note = attachmentNote(m.el, m.role) || (m.attach ? fileNote : null);
+        // 没有文字也没认出附件的用户消息，基本是只发了图片或文件，别留一轮空白
+        return { role: m.role, md, note: note || (m.role === 'user' && !md ? fileNote : null) };
+      })());
   }
 
   function firstUserSnippet(items) {
@@ -828,6 +829,8 @@
     const sc = scrollRootFor(first.el);
     const seen = new Map();
     let seq = 0;
+    let walk = 0;
+    let renumbered = false;
     // 单页应用切换会话不会刷新页面；中途换了会话或滚动区被替换，就停下来，免得把两个会话拼在一起
     const startUrl = location.href;
     const guard = () => {
@@ -848,25 +851,25 @@
           ? `attachment|${Math.round(m.el.getBoundingClientRect().top - viewportTop + sc.scrollTop)}`
           : null;
         const key = (AD.key && AD.key(m.el)) || attachmentKey || `${m.role}|${md.slice(0, 300)}`;
+        const idx = AD.index ? AD.index(m.el) : null;
         const prev = seen.get(key);
         if (prev) {
           // 同一条消息可能先挂载了半成品，保留渲染最完整的一次
           if (md.length > prev.md.length) prev.md = md;
+          // 序号变了说明顶上又加载出了更早的消息，旧序号作废。
+          // 这一趟往下收集里已经看过的又变了，说明这一趟收的序号不可信
+          if (idx !== prev.idx) {
+            if (prev.walk === walk) renumbered = true;
+            prev.idx = idx;
+          }
+          prev.walk = walk;
           continue;
         }
-        seen.set(key, {
-          role: m.role,
-          md,
-          note: item.note,
-          idx: AD.index ? AD.index(m.el) : null,
-          turn: AD.turnNo ? AD.turnNo(m.el) : null,
-          seq: seq++,
-        });
+        seen.set(key, { role: m.role, md, note: item.note, idx, walk, seq: seq++ });
       }
       btn.textContent = `⏳ 已收集 ${seen.size} 条…`;
     };
 
-    // 1. 滚到顶，等更早的消息加载完。
     // 长会话滚到顶后才分批去服务器取更早的消息，一批可能要一两秒，所以要等顶部连续几秒没有变化才算到头。
     // 「没有变化」看两样：滚动区总高度，和最上面那条消息是谁。
     const topSig = () => {
@@ -876,56 +879,53 @@
     };
     const QUIET = 3000;
     const t0 = Date.now();
-    let sig = null;
-    let quietSince = t0;
-    for (let i = 0; Date.now() - t0 < 180000; i++) {
-      // 每隔几次先往下挪一点再回顶：有的页面只在「滚进顶部」那一刻去取更早的消息，停在顶上不动不会再触发
-      if (i % 3 === 2) {
+    // 第 2 步途中序号又变了（更早的消息来得晚），前面收的序号不可信，从头再走一遍
+    for (let pass = 0; pass < 3; pass++) {
+      // 1. 滚到顶，等更早的消息加载完
+      let sig = null;
+      let quietSince = Date.now();
+      for (let i = 0; Date.now() - t0 < 180000; i++) {
+        // 每隔几次先往下挪一点再回顶：有的页面只在「滚进顶部」那一刻去取更早的消息，停在顶上不动不会再触发
+        if (i % 3 === 2) {
+          sc.scrollTop = -1e9;
+          sc.scrollTop += Math.max(200, Math.floor(sc.clientHeight * 0.5));
+          await sleep(150);
+        }
+        // 设成极小的负数：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
         sc.scrollTop = -1e9;
-        sc.scrollTop += Math.max(200, Math.floor(sc.clientHeight * 0.5));
-        await sleep(150);
+        await sleep(400);
+        guard();
+        grab();
+        const s = topSig();
+        if (s !== sig) { sig = s; quietSince = Date.now(); }
+        else if (Date.now() - quietSince >= QUIET) break;
+        btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
       }
-      // 设成极小的负数：普通容器会停在 0，倒序（flex-col-reverse）容器会停在它真正的顶部
-      sc.scrollTop = -1e9;
-      await sleep(400);
-      guard();
-      grab();
-      const s = topSig();
-      if (s !== sig) { sig = s; quietSince = Date.now(); }
-      else if (Date.now() - quietSince >= QUIET) break;
-      btn.textContent = `⏳ 加载更早的消息…（${Math.round((Date.now() - t0) / 1000)}s）`;
-    }
 
-    // 2. 逐屏往下滚，连续两次滚不动才算到底。
-    // 不用 scrollTop + clientHeight >= scrollHeight 判断：倒序容器的 scrollTop 是相对底部的负数，那个条件永远不成立
-    const step = Math.max(200, Math.floor(sc.clientHeight * 0.6));
-    let bottom = 0;
-    for (let i = 0; i < 3000 && bottom < 2; i++) {
-      const before = sc.scrollTop;
-      sc.scrollTop = before + step;
-      await sleep(300);
-      guard();
-      grab();
-      if (Math.abs(sc.scrollTop - before) < 1) bottom++;
-      else bottom = 0;
+      // 2. 逐屏往下滚，连续两次滚不动才算到底。
+      // 不用 scrollTop + clientHeight >= scrollHeight 判断：倒序容器的 scrollTop 是相对底部的负数，那个条件永远不成立
+      walk++;
+      renumbered = false;
+      const step = Math.max(200, Math.floor(sc.clientHeight * 0.6));
+      let bottom = 0;
+      for (let i = 0; i < 3000 && bottom < 2; i++) {
+        const before = sc.scrollTop;
+        sc.scrollTop = before + step;
+        await sleep(300);
+        guard();
+        grab();
+        if (Math.abs(sc.scrollTop - before) < 1) bottom++;
+        else bottom = 0;
+      }
+
+      if (!renumbered) break;
+      log('收集途中顶上又加载出更早的消息，从头再收一遍');
     }
 
     const items = [...seen.values()];
     const useIdx = items.length > 0 && items.every((x) => x.idx != null);
     items.sort((a, b) => (useIdx ? a.idx - b.idx || a.seq - b.seq : a.seq - b.seq));
     log('虚拟列表收集完成，共', items.length, '条');
-
-    // 等满了时间更早的消息还是没出来，会把中间某轮当成第 1 轮；让用户决定是否照样导出
-    const turns = items.map((x) => x.turn).filter((n) => n != null);
-    const head = turns.length ? Math.min(...turns) : 0;
-    if (head > 0 && !confirm(
-      `前面还有 ${head} 轮没加载出来，导出的内容会从中间开始。\n\n` +
-      '点「取消」后可以手动滚到会话最顶上再导出一次；点「确定」照样导出已加载的部分。'
-    )) {
-      const e = new Error('');
-      e.cancelled = true;
-      throw e;
-    }
     return items;
   }
 
@@ -978,7 +978,6 @@
       const { title, date, text } = build(items, resolveTitle(items));
       download(`${date}-${AD.name}-${sanitizeFilename(title)}.md`, text);
     } catch (e) {
-      if (e.cancelled) return;
       if (e.userFacing) { alert(e.message); return; }
       console.error('[导出] 出错', e);
       alert('导出出错：' + e.message + '\n控制台（F12）里有详细信息，欢迎截图提交到：\nhttps://github.com/Lord-Eve/ai-chat-to-markdown/issues');

@@ -44,6 +44,16 @@ const claudeChatCheck = (md, { title, turns }) => {
   assert.doesNotMatch(md, /尚未发送|草稿|侧栏|分享快照/);
 };
 
+// 45 轮按顺序一轮不缺；第 20 轮用户只发了图片
+const historyCheck = (md, { turns }) => {
+  assert.strictEqual(turns.length, 45, '45 轮一轮不缺');
+  turns.forEach((t, i) => {
+    const n = i + 1;
+    assert.strictEqual(t.user, n === 20 ? '> *[附件：图片或文件，未随文本导出]*' : `Question ${n}`, `第 ${n} 轮用户`);
+    assert.strictEqual(t.ai, `Answer ${n}`, `第 ${n} 轮 AI`);
+  });
+};
+
 const CASES = [
   {
     name: 'Claude 虚拟列表多条无 ID 纯附件消息（卸载重挂）',
@@ -232,20 +242,14 @@ const CASES = [
       const n = await page.evaluate(() => document.querySelectorAll('[data-content-search-unit-key]').length);
       assert.ok(n < 20, `打开时应只有最近几轮，实际 ${n} 个单元`);
     },
-    check(md, { turns }) {
-      assert.strictEqual(turns.length, 45, '45 轮一轮不缺');
-      turns.forEach((t, i) => {
-        assert.strictEqual(t.user, `Question ${i + 1}`, `第 ${i + 1} 轮用户`);
-        assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
-      });
-    },
+    check: historyCheck,
   },
   {
-    name: 'ChatGPT 更早的消息一直加载不出来：提醒前面缺轮次，取消就不下载',
-    url: 'https://chatgpt.com/c/history-test?stuck',
+    name: 'ChatGPT 超长会话：更早的消息在往下收集途中才到，轮次号整体后移，要从头再收一遍',
+    url: 'https://chatgpt.com/c/history-test?late',
     html: fixture('chatgpt-history.html'),
-    expectAlert: /前面还有 30 轮没加载出来/,
-    dismissAlert: true,
+    timeout: 180000,
+    check: historyCheck,
   },
   {
     name: 'ChatGPT 导出途中切换会话：应取消，不能把两个会话拼在一起',
@@ -388,7 +392,7 @@ async function runCase(browser, c) {
     if (c.during) await c.during(page);
     const d = await dialog;
     assert.match(d.message(), c.expectAlert, '提示内容');
-    await (c.dismissAlert ? d.dismiss() : d.accept());
+    await d.accept();
     await page.waitForTimeout(1500);
     assert.ok(!downloaded, '取消后不应下载文件');
     await context.close();
