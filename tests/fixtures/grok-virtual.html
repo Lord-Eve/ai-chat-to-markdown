@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Long Grok Test - Grok</title>
+<style>body{margin:0}#scroller{height:600px;overflow-y:auto;position:relative}
+#rows{position:relative}[data-plane-row]{position:absolute;left:0;right:0;height:250px;box-sizing:border-box}</style></head>
+<body>
+<!-- Grok 长会话：虚拟列表，只挂载视口上下各一屏以内的行，行按挂载先后追加在 DOM 里（不是时间顺序）。
+     打开时只有最近 10 轮，滚到顶才分批取更早的消息，取的时候顶上转圈。 -->
+<div id="scroller"><div id="rows"></div></div>
+<script>
+const N = 30, BATCH = 10, H = 250, sc = document.getElementById('scroller'), rows = document.getElementById('rows');
+let first = (N - BATCH) * 2, loading = false, atTop = false;
+const mounted = new Map();
+function make(i) {
+  const n = Math.floor(i / 2) + 1, user = i % 2 === 0;
+  const r = document.createElement('div');
+  r.setAttribute('data-plane-row', '');
+  r.className = 'relative group flex flex-col justify-center w-full ' + (user ? 'items-end' : 'items-start');
+  r.id = 'response-' + (user ? 'u' : 'a') + n;
+  r.innerHTML = (user ? '<span>You</span>' : '<span>Grok</span>') +
+    '<div class="message-bubble"><div class="response-content-markdown"><p>' + (user ? 'Question ' : 'Answer ') + n + '</p></div></div>';
+  return r;
+}
+function render() {
+  const lo = Math.max(first, first + Math.floor((sc.scrollTop - sc.clientHeight) / H));
+  const hi = Math.min(2 * N - 1, first + Math.ceil((sc.scrollTop + 2 * sc.clientHeight) / H));
+  for (const [i, el] of mounted) if (i < lo || i > hi) { el.remove(); mounted.delete(i); }
+  for (let i = lo; i <= hi; i++) if (!mounted.has(i)) { const el = make(i); rows.appendChild(el); mounted.set(i, el); }
+  for (const [i, el] of mounted) el.style.top = ((i - first) * H) + 'px';
+}
+function layout() { rows.style.height = ((2 * N - first) * H) + 'px'; render(); }
+sc.addEventListener('scroll', () => {
+  render();
+  const now = sc.scrollTop < 50;
+  if (now && !atTop && !loading && first > 0) {
+    loading = true;
+    const spin = document.createElement('div');
+    spin.innerHTML = '<div class="animate-spin" style="width:20px;height:20px"></div>';
+    sc.prepend(spin);
+    setTimeout(() => {
+      spin.remove();
+      const added = Math.min(BATCH * 2, first);
+      first -= added;
+      layout();
+      sc.scrollTop += added * H; // 视觉上停在原来那条消息
+      loading = false;
+    }, 1500);
+  }
+  atTop = now;
+});
+layout();
+sc.scrollTop = sc.scrollHeight;
+</script>
+</body></html>

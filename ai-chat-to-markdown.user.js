@@ -424,6 +424,12 @@
       name: 'Grok',
       label: 'Grok',
       test: () => location.hostname === 'grok.com',
+      // Grok 的会话也是虚拟列表：只渲染视口附近的消息，滚走的会被卸载，要边滚边收集
+      virtualized: true,
+      key(el) {
+        const row = el.closest('[id^="response-"]');
+        return row ? row.id : null;
+      },
       loadFrom: 'top',
       attachNote: '图片或文件，未随文本导出',
       probes: [
@@ -442,7 +448,9 @@
           }
           return { role: isUser ? 'user' : 'ai', el };
         });
-        return dropNested(list);
+        // 虚拟列表里的行可能按挂载先后排在 DOM 里，按屏幕上的位置排回去
+        const top = (m) => m.el.getBoundingClientRect().top;
+        return dropNested(list).sort((a, b) => top(a) - top(b));
       },
       content: (el) => el.querySelector('.response-content-markdown') || el,
       clean: () => {},
@@ -920,6 +928,9 @@
             if (prev.walk === walk) renumbered = true;
             prev.idx = idx;
           }
+          // 没有序号的平台按看到的先后排：以每一趟从上往下收集里第一次看到的先后为准，
+          // 第 1 步在顶上等加载时先看到的那批较新消息，不能排到更早的消息前面
+          if (prev.walk !== walk) prev.seq = seq++;
           prev.walk = walk;
           continue;
         }

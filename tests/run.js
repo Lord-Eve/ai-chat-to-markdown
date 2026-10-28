@@ -332,6 +332,24 @@ const CASES = [
       assert.strictEqual(turns[1].ai, '*（Searched 8 web pages）*\n\nGrok answer two.');
     },
   },
+  {
+    name: 'Grok 长会话：虚拟列表只挂载视口附近，行在 DOM 里乱序，顶上分批加载更早的消息',
+    url: 'https://grok.com/c/long-test',
+    html: fixture('grok-virtual.html'),
+    timeout: 120000,
+    async before(page) {
+      const n = await page.locator('.message-bubble').count();
+      assert.ok(n < 12, `模拟页应只挂载一部分消息，实际 ${n} 条`);
+    },
+    check(md, { title, turns }) {
+      assert.strictEqual(title, 'Long Grok Test');
+      assert.strictEqual(turns.length, 30, '30 轮一轮不缺');
+      turns.forEach((t, i) => {
+        assert.strictEqual(t.user, `Question ${i + 1}`, `第 ${i + 1} 轮用户`);
+        assert.strictEqual(t.ai, `Answer ${i + 1}`, `第 ${i + 1} 轮 AI`);
+      });
+    },
+  },
 ];
 
 /* ---------- 运行 ---------- */
